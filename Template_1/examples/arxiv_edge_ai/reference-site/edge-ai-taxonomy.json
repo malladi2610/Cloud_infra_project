@@ -1,0 +1,135 @@
+{
+  "version": "1.0.0",
+  "title": "Edge AI Classification Taxonomy",
+  "description": "Reference taxonomy used to classify AI paper abstracts into Edge AI vs Non-Edge AI.",
+  "category": "edge_ai",
+  "updated_at": "2026-03-22",
+  "scoring": {
+    "method": "weighted_keyword_and_intent_match",
+    "edge_ai_threshold": 0.65,
+    "needs_manual_review_threshold": 0.5,
+    "notes": [
+      "Use semantic match, not exact keyword match only.",
+      "Do not classify as edge_ai when abstract is cloud-only with no edge or device deployment intent."
+    ]
+  },
+  "positive_signals": {
+    "strong_keywords": [
+      "edge ai",
+      "on-device inference",
+      "on-device learning",
+      "tinyml",
+      "microcontroller",
+      "resource-constrained",
+      "embedded ai",
+      "edge deployment",
+      "model quantization",
+      "post-training quantization",
+      "pruning",
+      "neural architecture search for edge",
+      "latency-critical",
+      "real-time inference on device",
+      "energy-efficient inference",
+      "mobile inference",
+      "federated learning on device",
+      "iot edge"
+    ],
+    "medium_keywords": [
+      "low power",
+      "memory footprint",
+      "inference latency",
+      "battery-powered",
+      "offline inference",
+      "hardware-aware optimization",
+      "edge accelerator",
+      "npu",
+      "tpu edge",
+      "jetson",
+      "raspberry pi",
+      "arm cortex",
+      "mobile cpu",
+      "runtime optimization"
+    ]
+  },
+  "negative_signals": {
+    "cloud_only_keywords": [
+      "datacenter serving only",
+      "cloud-only deployment",
+      "large-scale cluster training",
+      "gpu cluster at scale",
+      "server-side inference only",
+      "no deployment constraints",
+      "high-throughput cloud inference"
+    ]
+  },
+  "subdomains": [
+    {
+      "id": "on_device_inference",
+      "label": "On-device Inference",
+      "description": "Model inference directly on edge devices such as phones, cameras, IoT modules, or embedded boards.",
+      "keywords": [
+        "on-device inference",
+        "mobile inference",
+        "embedded deployment",
+        "real-time edge"
+      ]
+    },
+    {
+      "id": "model_compression",
+      "label": "Model Compression for Edge",
+      "description": "Compression or optimization methods to fit AI models within edge hardware limits.",
+      "keywords": [
+        "quantization",
+        "pruning",
+        "distillation",
+        "low-bit",
+        "compressed model"
+      ]
+    },
+    {
+      "id": "hardware_aware_ai",
+      "label": "Hardware-aware AI",
+      "description": "AI methods co-designed with hardware constraints such as memory, compute budget, and power.",
+      "keywords": [
+        "hardware-aware",
+        "memory budget",
+        "energy budget",
+        "latency budget"
+      ]
+    },
+    {
+      "id": "distributed_edge_learning",
+      "label": "Distributed Edge Learning",
+      "description": "Learning paradigms where model updates or adaptation occur on edge devices.",
+      "keywords": [
+        "federated learning",
+        "on-device training",
+        "privacy-preserving edge"
+      ]
+    }
+  ],
+  "output_schema": {
+    "required_fields": [
+      "is_edge_ai",
+      "edge_ai_subdomain",
+      "confidence",
+      "evidence"
+    ],
+    "field_definitions": {
+      "is_edge_ai": "boolean",
+      "edge_ai_subdomain": "string or null",
+      "confidence": "number between 0.0 and 1.0",
+      "evidence": "array of short strings from abstract/title that justify classification"
+    }
+  },
+  "few_shot_hints": [
+    {
+      "input_hint": "Model for real-time vision inference on Raspberry Pi using int8 quantization.",
+      "expected_label": "edge_ai"
+    },
+    {
+      "input_hint": "LLM serving optimization across cloud GPU clusters with no device deployment.",
+      "expected_label": "not_edge_ai"
+    }
+  ]
+}

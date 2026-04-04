@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Edge AI Reference Taxonomy</title>
+    <style>
+      :root {
+        --bg: #f5f7fb;
+        --card: #ffffff;
+        --text: #111827;
+        --muted: #4b5563;
+        --accent: #0f766e;
+      }
+      body {
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        margin: 0;
+        background: linear-gradient(180deg, #eef2ff 0%, var(--bg) 30%);
+        color: var(--text);
+      }
+      main {
+        max-width: 900px;
+        margin: 40px auto;
+        padding: 0 16px;
+      }
+      .card {
+        background: var(--card);
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 6px 24px rgba(15, 23, 42, 0.08);
+      }
+      h1 {
+        margin: 0 0 12px 0;
+      }
+      p {
+        line-height: 1.55;
+      }
+      a {
+        color: var(--accent);
+      }
+      code {
+        background: #f3f4f6;
+        padding: 2px 6px;
+        border-radius: 6px;
+      }
+      ul {
+        margin: 8px 0 0 18px;
+      }
+      .muted {
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="card">
+        <h1>Edge AI Reference Taxonomy</h1>
+        <p>
+          This local reference site is consumed by n8n workflows to classify
+          arXiv paper abstracts into <code>edge_ai</code> or
+          <code>not_edge_ai</code>.
+        </p>
+        <p>
+          Taxonomy JSON:
+          <a href="/edge-ai-taxonomy.json">/edge-ai-taxonomy.json</a>
+        </p>
+        <p class="muted">Suggested n8n HTTP Request URL:</p>
+        <p><code>http://reference_site/edge-ai-taxonomy.json</code></p>
+        <p class="muted">
+          Use this URL inside n8n (container-to-container network).
+        </p>
+        <p class="muted">Use this URL in your browser on host machine:</p>
+        <p><code>http://localhost:8090/edge-ai-taxonomy.json</code></p>
+        <h2>What it includes</h2>
+        <ul>
+          <li>Strong and medium Edge AI signals</li>
+          <li>Cloud-only negative signals</li>
+          <li>Subdomain hints (on-device, compression, hardware-aware)</li>
+          <li>Expected model output schema</li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>

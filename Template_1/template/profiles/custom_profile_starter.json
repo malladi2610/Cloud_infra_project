@@ -1,0 +1,50 @@
+{
+  "id": "custom_profile_starter",
+  "name": "Custom Profile Starter",
+  "description": "Starter profile scaffold for your own classification pipeline.",
+  "status": "planned",
+  "isExample": false,
+  "baseFields": {
+    "sourceUrl": {
+      "label": "Source URL",
+      "required": true,
+      "default": "",
+      "placeholder": "https://source.example.com/data"
+    },
+    "referenceUrl": {
+      "label": "Reference URL",
+      "required": false,
+      "default": "",
+      "placeholder": "https://reference.example.com/taxonomy"
+    },
+    "runMode": {
+      "label": "Run Mode",
+      "required": true,
+      "default": "on_demand",
+      "options": ["on_demand", "scheduled"]
+    }
+  },
+  "fields": [
+    {
+      "key": "maxItems",
+      "label": "Max Items",
+      "type": "number",
+      "required": true,
+      "default": 25,
+      "min": 1,
+      "max": 500,
+      "step": 1,
+      "helpText": "Limit items fetched and classified in one run"
+    }
+  ],
+  "execution": {
+    "webhookPath": "classifications/run-custom-profile",
+    "payloadMap": {
+      "profileId": "profileId",
+      "sourceUrl": "sourceUrl",
+      "referenceUrl": "referenceUrl",
+      "runMode": "runMode",
+      "inputs": "inputs"
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "id": "ind_company_domain_classifier",
+  "name": "IND Company Domain Classifier",
+  "description": "Target application profile for classifying IND sponsor companies into business domains.",
+  "status": "planned",
+  "isExample": false,
+  "baseFields": {
+    "sourceUrl": {
+      "label": "Source URL",
+      "required": true,
+      "default": "https://ind.nl/en/public-register-recognised-sponsors/public-register-regular-labour-and-highly-skilled-migrants",
+      "placeholder": "https://ind.nl/..."
+    },
+    "referenceUrl": {
+      "label": "Reference URL",
+      "required": false,
+      "default": "",
+      "placeholder": "https://example.com/domain-taxonomy.json"
+    },
+    "runMode": {
+      "label": "Run Mode",
+      "required": true,
+      "default": "on_demand",
+      "options": ["on_demand", "scheduled"]
+    }
+  },
+  "fields": [
+    {
+      "key": "maxItems",
+      "label": "Max Companies",
+      "type": "number",
+      "required": true,
+      "default": 100,
+      "min": 1,
+      "max": 500,
+      "step": 1
+    },
+    {
+      "key": "classificationLabels",
+      "label": "Classification Labels",
+      "type": "textarea",
+      "required": true,
+      "default": "Embedded, Software, AI, Medical Manufacturing",
+      "placeholder": "Comma-separated labels"
+    }
+  ],
+  "execution": {
+    "webhookPath": "classifications/run-ind-company-domain",
+    "payloadMap": {
+      "profileId": "profileId",
+      "sourceUrl": "sourceUrl",
+      "referenceUrl": "referenceUrl",
+      "runMode": "runMode",
+      "inputs": "inputs"
+    }
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "id": "arxiv_edge_ai",
+  "name": "arXiv Edge AI (Example)",
+  "description": "Example profile that classifies latest arXiv papers against an Edge AI taxonomy.",
+  "status": "active",
+  "isExample": true,
+  "baseFields": {
+    "sourceUrl": {
+      "label": "Source URL",
+      "required": true,
+      "default": "https://export.arxiv.org/api/query",
+      "placeholder": "https://export.arxiv.org/api/query"
+    },
+    "referenceUrl": {
+      "label": "Reference URL",
+      "required": false,
+      "default": "http://reference_site/edge-ai-taxonomy.json",
+      "placeholder": "http://reference_site/edge-ai-taxonomy.json"
+    },
+    "runMode": {
+      "label": "Run Mode",
+      "required": true,
+      "default": "on_demand",
+      "options": ["on_demand", "scheduled"]
+    }
+  },
+  "fields": [
+    {
+      "key": "arxivCategory",
+      "label": "arXiv Category",
+      "type": "text",
+      "required": true,
+      "default": "cs.AI",
+      "placeholder": "e.g. cs.AI"
+    },
+    {
+      "key": "maxResults",
+      "label": "Max Results",
+      "type": "number",
+      "required": true,
+      "default": 8,
+      "min": 1,
+      "max": 8,
+      "step": 1
+    }
+
+  ],
+  "execution": {
+    "webhookPath": "classifications/run-e2e-cp5-cp6",
+    "payloadMap": {
+      "profileId": "profileId",
+      "sourceUrl": "sourceUrl",
+      "referenceUrl": "referenceUrl",
+      "runMode": "runMode",
+      "arxivCategory": "inputs.arxivCategory",
+      "maxResults": "inputs.maxResults",
+      "inputs": "inputs"
+    }
+  }
+}

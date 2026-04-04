@@ -1,0 +1,352 @@
+{
+  "name": "Example Profile - arXiv Edge AI Classification",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "classifications/run-e2e-cp5-cp6",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "1",
+      "name": "CP5+CP6 Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        180,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body ?? $json;\n\nconst runMode = String(body.runMode ?? 'on_demand').trim();\nconst arxivCategory = String(body.arxivCategory ?? 'cs.AI').trim();\nconst maxResultsRaw = Number(body.maxResults ?? 8);\nconst maxResults = Number.isFinite(maxResultsRaw) ? Math.max(1, Math.min(8, Math.floor(maxResultsRaw))) : 8;\n\nconst defaultSourceBase = 'https://export.arxiv.org/api/query';\nconst defaultReferenceUrl = 'http://reference_site/edge-ai-taxonomy.json';\nconst fallbackReferenceUrl = 'http://host.docker.internal:8090/edge-ai-taxonomy.json';\n\nconst sourceUrlBase = String(body.sourceUrl ?? defaultSourceBase).trim();\nconst referenceUrlRaw = String(body.referenceUrl ?? defaultReferenceUrl).trim();\n\nconst isValidUrl = (value) => /^https?:\\/\\/[^\\s/$.?#].[^\\s]*$/i.test(value);\nif (!isValidUrl(sourceUrlBase)) {\n  throw new Error(`sourceUrl must be a valid http/https URL. Received: '${sourceUrlBase}'`);\n}\nif (!isValidUrl(referenceUrlRaw)) {\n  throw new Error(`referenceUrl must be a valid http/https URL. Received: '${referenceUrlRaw}'`);\n}\n\nconst hasQuery = sourceUrlBase.includes('?');\nconst sourceUrl = `${sourceUrlBase}${hasQuery ? '&' : '?'}search_query=cat:${encodeURIComponent(arxivCategory)}&sortBy=submittedDate&sortOrder=descending&max_results=${maxResults}`;\n\nconst uuidv4 = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {\n  const r = Math.floor(Math.random() * 16);\n  const v = char === 'x' ? r : (r & 0x3) | 0x8;\n  return v.toString(16);\n});\n\nconst escapeSql = (value) => String(value).replace(/'/g, \"''\");\nconst jobId = uuidv4();\n\nconst inputPayload = {\n  profileId: String(body.profileId ?? 'arxiv_edge_ai').trim(),\n  sourceUrlBase,\n  referenceUrl: referenceUrlRaw,\n  runMode,\n  inputs: {\n    arxivCategory,\n    maxResults\n  }\n};\n\nreturn [{\n  json: {\n    jobId,\n    profileId: inputPayload.profileId,\n    profileIdSql: escapeSql(inputPayload.profileId),\n    inputPayload,\n    inputPayloadSql: escapeSql(JSON.stringify(inputPayload)),\n    runMode,\n    arxivCategory,\n    maxResults,\n    sourceUrl,\n    referenceUrl: referenceUrlRaw,\n    fallbackReferenceUrl,\n    sourceUrlSql: escapeSql(sourceUrl),\n    referenceUrlSql: escapeSql(referenceUrlRaw),\n    runModeSql: escapeSql(runMode)\n  }\n}];"
+      },
+      "id": "2",
+      "name": "Validate + Build Job",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$json.sourceUrl}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Template1-EdgeAI-CP6/1.0 (n8n workflow)"
+            },
+            {
+              "name": "Accept",
+              "value": "application/atom+xml,application/xml,text/xml;q=0.9,*/*;q=0.8"
+            }
+          ]
+        },
+        "responseFormat": "string",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "3",
+      "name": "Fetch arXiv Feed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$node[\"Validate + Build Job\"].json[\"referenceUrl\"]}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "responseFormat": "json",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "4",
+      "name": "Fetch Reference Taxonomy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $node['Validate + Build Job'].json;\nconst arxivNode = $node['Fetch arXiv Feed'].json ?? {};\nconst arxivRaw = String(arxivNode.body ?? arxivNode.data ?? arxivNode.responseBody ?? '');\nconst arxivStatus = Number(arxivNode.statusCode ?? arxivNode.status ?? 0);\nconst taxonomyResponse = $json.body ?? $json;\n\nif (arxivStatus >= 400) {\n  throw new Error(`arXiv fetch failed with status ${arxivStatus}`);\n}\nif (!arxivRaw) {\n  throw new Error(`arXiv response body is empty. Node keys: ${Object.keys(arxivNode).join(', ')}`);\n}\n\nconst normalizedXml = arxivRaw\n  .replace(/<atom:entry/gi, '<entry')\n  .replace(/<\\/atom:entry>/gi, '</entry>');\n\nconst stripXml = (value) => String(value)\n  .replace(/<!\\[CDATA\\[(.*?)\\]\\]>/gs, '$1')\n  .replace(/<[^>]+>/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim();\n\nconst firstTagValue = (block, tag) => {\n  const re = new RegExp(`<(?:\\\\w+:)?${tag}[^>]*>([\\\\s\\\\S]*?)<\\\\/(?:\\\\w+:)?${tag}>`, 'i');\n  const match = block.match(re);\n  return match ? stripXml(match[1]) : '';\n};\n\nconst entryBlocks = normalizedXml.match(/<(?:\\w+:)?entry\\b[\\s\\S]*?<\\/(?:\\w+:)?entry>/gi) ?? [];\nif (!entryBlocks.length) {\n  const preview = normalizedXml.slice(0, 220).replace(/\\s+/g, ' ');\n  throw new Error(`arXiv response did not contain parsable entries. Preview: ${preview}`);\n}\n\nconst papers = entryBlocks.slice(0, base.maxResults).map((entry) => {\n  const idRaw = firstTagValue(entry, 'id');\n  const title = firstTagValue(entry, 'title');\n  const abstract = firstTagValue(entry, 'summary');\n  const published = firstTagValue(entry, 'published');\n  const updated = firstTagValue(entry, 'updated');\n  const id = idRaw.split('/abs/').pop() || idRaw;\n  return { id, title, abstract, published, updated };\n}).filter((p) => p.title && p.abstract);\n\nif (!papers.length) {\n  throw new Error('No valid papers were parsed from arXiv entries.');\n}\n\nconst positiveSignals = taxonomyResponse?.positive_signals ?? {};\nconst subdomains = Array.isArray(taxonomyResponse?.subdomains) ? taxonomyResponse.subdomains : [];\n\nconst payload = {\n  phase: 'cp5',\n  source: {\n    site: 'arxiv',\n    category: base.arxivCategory,\n    maxResultsRequested: base.maxResults,\n    parsedCount: papers.length\n  },\n  reference: {\n    title: taxonomyResponse?.title ?? 'Edge AI Classification Taxonomy',\n    version: taxonomyResponse?.version ?? 'unknown',\n    category: taxonomyResponse?.category ?? 'edge_ai',\n    strongSignals: positiveSignals?.strong_keywords ?? [],\n    mediumSignals: positiveSignals?.medium_keywords ?? [],\n    subdomains\n  },\n  papers\n};\n\nconst payloadText = JSON.stringify(payload);\nconst escapeSql = (value) => String(value).replace(/'/g, \"''\");\n\nreturn [{\n  json: {\n    ...base,\n    papersCount: papers.length,\n    taxonomyVersion: payload.reference.version,\n    firstPaperTitle: papers[0]?.title ?? '',\n    payloadJsonSql: escapeSql(payloadText),\n    payloadSummarySql: escapeSql(`Prepared ${papers.length} papers from arXiv category ${base.arxivCategory} with taxonomy ${payload.reference.version}`),\n    preparedPayload: payload\n  }\n}];"
+      },
+      "id": "5",
+      "name": "Parse + Prepare Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1160,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH new_job AS (\n  INSERT INTO classification_jobs (\n    id,\n    profile_id,\n    input_payload_json,\n    source_url,\n    reference_url,\n    run_mode,\n    status,\n    created_at,\n    updated_at\n  )\n  VALUES (\n    '{{$json.jobId}}',\n    '{{$json.profileIdSql}}',\n    '{{$json.inputPayloadSql}}'::jsonb,\n    '{{$json.sourceUrlSql}}',\n    '{{$json.referenceUrlSql}}',\n    '{{$json.runModeSql}}',\n    'prepared',\n    NOW(),\n    NOW()\n  )\n  RETURNING id\n)\nINSERT INTO classification_results (\n  job_id,\n  category,\n  confidence,\n  evidence,\n  provider,\n  model,\n  raw_response_json,\n  created_at\n)\nSELECT\n  id,\n  'cp5_prepared',\n  NULL,\n  '{{$json.payloadSummarySql}}',\n  'cp5_prep',\n  'none',\n  '{{$json.payloadJsonSql}}'::jsonb,\n  NOW()\nFROM new_job\nRETURNING job_id;",
+        "options": {}
+      },
+      "id": "6",
+      "name": "Insert Prepared Job + Result",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1420,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $node['Validate + Build Job'].json;\nconst parsed = $node['Parse + Prepare Payload'].json;\nconst payload = parsed.preparedPayload ?? null;\nif (!payload || typeof payload !== 'object') {\n  throw new Error('Prepared payload not found for this jobId. Ensure CP5 completed successfully.');\n}\n\nconst papersRaw = Array.isArray(payload.papers) ? payload.papers : [];\nconst llmPaperLimit = Math.max(1, Math.min(8, Number(base.maxResults ?? 8)));\nconst papers = papersRaw.slice(0, llmPaperLimit).map((p) => ({\n  paper_id: String(p.id ?? '').trim(),\n  title: String(p.title ?? '').trim(),\n  abstract: String(p.abstract ?? '').trim().slice(0, 2000),\n  published: String(p.published ?? '').trim()\n})).filter((p) => p.paper_id && p.title && p.abstract);\n\nif (!papers.length) {\n  throw new Error('Prepared payload has no valid papers to classify.');\n}\n\nconst reference = payload.reference ?? {};\nconst taxonomy = {\n  category: reference.category ?? 'edge_ai',\n  strongSignals: Array.isArray(reference.strongSignals) ? reference.strongSignals : [],\n  mediumSignals: Array.isArray(reference.mediumSignals) ? reference.mediumSignals : [],\n  subdomains: Array.isArray(reference.subdomains) ? reference.subdomains : []\n};\n\nconst provider = String($env.MODEL_PROVIDER ?? 'openai').trim().toLowerCase();\n\nlet llmUrl = '';\nlet authHeader = '';\nlet apiKeyHeader = '';\nlet modelName = '';\n\nconst systemPrompt = [\n  'You are an expert classifier for Edge AI research papers.',\n  'Classify each paper into edge_ai (true/false).',\n  'Use the taxonomy signals and paper text only.',\n  'IMPORTANT: confidence means probability that the paper IS Edge AI (0..1).',\n  'If is_edge_ai is true, confidence must be >= 0.5. If is_edge_ai is false, confidence must be < 0.5.',\n  'Return strict JSON only, no markdown.',\n  'Output schema: {\"classifications\":[{\"paper_id\":\"string\",\"is_edge_ai\":true,\"edge_ai_subdomain\":\"string|null\",\"confidence\":0.0,\"evidence\":[\"string\"]}]}'\n].join(' ');\n\nconst userPayload = {\n  task: 'Classify arXiv papers for Edge AI relevance',\n  taxonomy,\n  papers\n};\n\nlet llmRequestBody;\n\nif (provider === 'openai') {\n  const openaiApiKey = String($env.OPENAI_API_KEY ?? '').trim();\n  const openaiModel = String($env.OPENAI_MODEL ?? 'gpt-4.1-mini').trim();\n\n  if (!openaiApiKey || !openaiModel) {\n    throw new Error('OpenAI env vars are missing. Set OPENAI_API_KEY and OPENAI_MODEL in Template_1/.env and restart n8n container.');\n  }\n\n  llmUrl = 'https://api.openai.com/v1/chat/completions';\n  authHeader = `Bearer ${openaiApiKey}`;\n  modelName = openaiModel;\n\n  llmRequestBody = {\n    model: openaiModel,\n    temperature: 0.1,\n    response_format: { type: 'json_object' },\n    messages: [\n      { role: 'system', content: systemPrompt },\n      { role: 'user', content: JSON.stringify(userPayload) }\n    ]\n  };\n} else if (provider === 'azure_openai') {\n  const endpoint = String($env.AZURE_OPENAI_ENDPOINT ?? '').trim().replace(/\\/$/, '');\n  const deployment = String($env.AZURE_OPENAI_DEPLOYMENT ?? '').trim();\n  const apiVersion = String($env.AZURE_OPENAI_API_VERSION ?? '2024-10-21').trim();\n  const apiKey = String($env.AZURE_OPENAI_API_KEY ?? '').trim();\n\n  if (!endpoint || !deployment || !apiVersion || !apiKey) {\n    throw new Error('Azure OpenAI env vars are missing. Set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT, AZURE_OPENAI_API_VERSION, AZURE_OPENAI_API_KEY in Template_1/.env and restart n8n container.');\n  }\n\n  llmUrl = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${encodeURIComponent(apiVersion)}`;\n  apiKeyHeader = apiKey;\n  modelName = deployment;\n\n  llmRequestBody = {\n    temperature: 0.1,\n    response_format: { type: 'json_object' },\n    messages: [\n      { role: 'system', content: systemPrompt },\n      { role: 'user', content: JSON.stringify(userPayload) }\n    ]\n  };\n} else {\n  throw new Error(`Unsupported MODEL_PROVIDER='${provider}'. Use 'openai' or 'azure_openai'.`);\n}\n\nconst escapeSql = (value) => String(value).replace(/'/g, \"''\");\n\nreturn [{\n  json: {\n    jobId: base.jobId,\n    jobIdSql: escapeSql(base.jobId),\n    provider,\n    providerSql: escapeSql(provider),\n    modelName,\n    llmUrl,\n    authHeader,\n    apiKeyHeader,\n    llmRequestBody\n  }\n}];"
+      },
+      "id": "7",
+      "name": "Build LLM Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$json.llmUrl}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{$json.authHeader}}"
+            },
+            {
+              "name": "api-key",
+              "value": "={{$json.apiKeyHeader}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json.llmRequestBody}}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "8",
+      "name": "Call LLM API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1940,
+        320
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $node['Build LLM Request'].json;\nconst resp = $json.body ?? $json;\n\nconst contentRaw = resp?.choices?.[0]?.message?.content;\nif (!contentRaw) {\n  throw new Error(`LLM response content is missing. Keys: ${Object.keys(resp || {}).join(', ')}`);\n}\n\nconst content = Array.isArray(contentRaw)\n  ? String(contentRaw.map((x) => x?.text ?? '').join(''))\n  : String(contentRaw);\n\nlet parsed;\ntry {\n  parsed = JSON.parse(content);\n} catch (err) {\n  throw new Error(`LLM returned non-JSON content: ${content.slice(0, 300)}`);\n}\n\nconst list = Array.isArray(parsed.classifications) ? parsed.classifications : [];\nif (!list.length) {\n  throw new Error('LLM JSON did not contain classifications array with items.');\n}\n\nconst normalized = list.map((item) => {\n  const declaredLabel = Boolean(item.is_edge_ai);\n  const raw = Number(item.confidence);\n\n  // confidence is standardized as P(is_edge_ai=true).\n  // Backward compatibility: if model returns decision-confidence semantics, flip when contradictory.\n  let edgeAiScore;\n  if (Number.isFinite(raw)) {\n    edgeAiScore = Math.max(0, Math.min(1, raw));\n    const contradictory = (declaredLabel && edgeAiScore < 0.5) || (!declaredLabel && edgeAiScore > 0.5);\n    if (contradictory) {\n      edgeAiScore = 1 - edgeAiScore;\n    }\n  } else {\n    edgeAiScore = declaredLabel ? 0.75 : 0.25;\n  }\n\n  const isEdgeAi = edgeAiScore >= 0.5;\n\n  const evidence = Array.isArray(item.evidence)\n    ? item.evidence.map((v) => String(v).trim()).filter(Boolean).slice(0, 3)\n    : [];\n\n  return {\n    paper_id: String(item.paper_id ?? '').trim(),\n    is_edge_ai: isEdgeAi,\n    edge_ai_subdomain: isEdgeAi\n      ? (item.edge_ai_subdomain == null ? null : String(item.edge_ai_subdomain).trim())\n      : null,\n    confidence: Number(edgeAiScore.toFixed(4)),\n    evidence\n  };\n}).filter((item) => item.paper_id);\n\nif (!normalized.length) {\n  throw new Error('No valid classification rows after normalization.');\n}\n\nconst positiveCount = normalized.filter((x) => x.is_edge_ai).length;\nconst negativeCount = normalized.length - positiveCount;\n\nconst result = {\n  phase: 'cp6',\n  provider: req.provider,\n  model: req.modelName,\n  confidence_semantics: 'probability_of_edge_ai',\n  classified_count: normalized.length,\n  positive_count: positiveCount,\n  negative_count: negativeCount,\n  edge_ai_count: positiveCount,\n  not_edge_ai_count: negativeCount,\n  classifications: normalized\n};\n\nconst summaryText = `Classified ${normalized.length} papers. positive=${positiveCount}, negative=${negativeCount}`;\nconst escapeSql = (value) => String(value).replace(/'/g, \"''\");\n\nreturn [{\n  json: {\n    jobId: req.jobId,\n    jobIdSql: req.jobIdSql,\n    providerSql: escapeSql(req.provider),\n    modelNameSql: escapeSql(req.modelName),\n    summarySql: escapeSql(summaryText),\n    rawResultSql: escapeSql(JSON.stringify(result)),\n    classifiedCount: normalized.length,\n    positiveCount,\n    negativeCount\n  }\n}];"
+      },
+      "id": "9",
+      "name": "Parse + Prepare Save",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH updated AS (\n  UPDATE classification_jobs\n  SET status = 'completed',\n      error_message = NULL,\n      updated_at = NOW()\n  WHERE id = '{{$json.jobIdSql}}'\n  RETURNING id\n)\nINSERT INTO classification_results (\n  job_id,\n  category,\n  confidence,\n  evidence,\n  provider,\n  model,\n  raw_response_json,\n  created_at\n)\nSELECT\n  id,\n  'edge_ai_batch',\n  NULL,\n  '{{$json.summarySql}}',\n  '{{$json.providerSql}}',\n  '{{$json.modelNameSql}}',\n  '{{$json.rawResultSql}}'::jsonb,\n  NOW()\nFROM updated\nRETURNING job_id;",
+        "options": {}
+      },
+      "id": "10",
+      "name": "Save Final Result",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2460,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"jobId\": $json.job_id, \"status\": \"completed\", \"pipeline\": \"arxiv_edge_ai_example\", \"classifiedCount\": $node[\"Parse + Prepare Save\"].json.classifiedCount, \"positiveCount\": $node[\"Parse + Prepare Save\"].json.positiveCount, \"negativeCount\": $node[\"Parse + Prepare Save\"].json.negativeCount } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "11",
+      "name": "Respond Completed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.3,
+      "position": [
+        2720,
+        320
+      ]
+    }
+  ],
+  "connections": {
+    "CP5+CP6 Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate + Build Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate + Build Job": {
+      "main": [
+        [
+          {
+            "node": "Fetch arXiv Feed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch arXiv Feed": {
+      "main": [
+        [
+          {
+            "node": "Fetch Reference Taxonomy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Reference Taxonomy": {
+      "main": [
+        [
+          {
+            "node": "Parse + Prepare Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse + Prepare Payload": {
+      "main": [
+        [
+          {
+            "node": "Insert Prepared Job + Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Prepared Job + Result": {
+      "main": [
+        [
+          {
+            "node": "Build LLM Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build LLM Request": {
+      "main": [
+        [
+          {
+            "node": "Call LLM API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call LLM API": {
+      "main": [
+        [
+          {
+            "node": "Parse + Prepare Save",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse + Prepare Save": {
+      "main": [
+        [
+          {
+            "node": "Save Final Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Final Result": {
+      "main": [
+        [
+          {
+            "node": "Respond Completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {}
+}

@@ -1,0 +1,14 @@
+.git
+.gitignore
+.DS_Store
+.env
+
+# Local dependencies and caches
+**/node_modules
+**/.cache
+
+# Terraform state/artifacts are not required in runtime image builds
+infra/teraform/.terraform
+infra/teraform/*.tfstate
+infra/teraform/*.tfstate.backup
+infra/teraform/*.tfplan

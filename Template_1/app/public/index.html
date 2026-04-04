@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Classification Template</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1 class="page-title">Classification Template</h1>
+      <p class="muted page-subtitle">
+        Run profile-based classification jobs and review SQL-backed results.
+      </p>
+
+      <section class="card">
+        <h2>Run Classification</h2>
+        <form id="run-form">
+          <div class="row">
+            <label for="profile">Profile</label>
+            <select id="profile" name="profile"></select>
+            <p id="profile-help" class="muted inline-help"></p>
+          </div>
+          <div class="row">
+            <label for="sourceUrl" id="sourceUrlLabel">Source URL</label>
+            <input id="sourceUrl" name="sourceUrl" />
+          </div>
+          <div class="row">
+            <label for="referenceUrl" id="referenceUrlLabel">Reference URL</label>
+            <input id="referenceUrl" name="referenceUrl" />
+          </div>
+          <div class="row">
+            <label for="runMode" id="runModeLabel">Run Mode</label>
+            <select id="runMode" name="runMode"></select>
+          </div>
+          <div id="dynamic-fields" class="dynamic-fields"></div>
+          <button type="submit">Run</button>
+        </form>
+        <pre id="run-output" class="output"></pre>
+      </section>
+
+      <section class="card">
+        <div class="header-row">
+          <h2>Recent Jobs</h2>
+          <button id="refresh-btn">Refresh</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Job ID</th>
+              <th>Profile</th>
+              <th>Status</th>
+              <th>Result Category</th>
+              <th>Provider/Model</th>
+              <th>Counts (Pos/Neg)</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody id="jobs-body"></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>Selected Job Details</h2>
+        <pre id="details-output" class="output"></pre>
+      </section>
+    </main>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

@@ -1,0 +1,68 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: classifier
+      POSTGRES_PASSWORD: classifier
+      POSTGRES_DB: classifier
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d
+
+  n8n:
+    image: n8nio/n8n:latest
+    ports:
+      - "5678:5678"
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: n8ndb
+      DB_POSTGRESDB_USER: classifier
+      DB_POSTGRESDB_PASSWORD: classifier
+      N8N_ENCRYPTION_KEY: changeme_n8n_key
+      N8N_RUNNERS_ENABLED: "true"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-10-21}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+    depends_on:
+      - postgres
+
+  app:
+    image: node:20-alpine
+    command: sh -lc "if [ ! -d node_modules ]; then npm install; fi && npm run dev"
+    working_dir: /workspace/app
+    volumes:
+      - ./:/workspace
+    ports:
+      - "8080:8080"
+    environment:
+      APP_PORT: 8080
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: classifier
+      DB_USER: classifier
+      DB_PASSWORD: classifier
+      N8N_WEBHOOK_BASE: http://n8n:5678/webhook
+      N8N_WEBHOOK_URL: http://n8n:5678/webhook/classifications/run-e2e-cp5-cp6
+      DEFAULT_PROFILE_ID: custom_profile_starter
+    depends_on:
+      - postgres
+      - n8n
+
+  reference_site:
+    image: nginx:1.27-alpine
+    ports:
+      - "8090:80"
+    volumes:
+      - ./examples/arxiv_edge_ai/reference-site:/usr/share/nginx/html:ro
+
+volumes:
+  pgdata:
