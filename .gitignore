@@ -1,3 +1,11 @@
 extras/
 Template_1/checkpoint_progress.md
 Template_1/.env
+
+# Terraform generated files
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
