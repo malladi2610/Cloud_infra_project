@@ -169,4 +169,4 @@ Migration files:
 
 ## 4. Cloud Infrastructure Diagram
 
-![Template 1 Cloud Infrastructure](../extras/docs/template_1/graphs/inframap-readable.png)
+![Template 1 Cloud Infrastructure](./inframap-readable.png)
