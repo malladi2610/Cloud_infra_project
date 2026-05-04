@@ -1,0 +1,538 @@
+{
+  "name": "wf_template2_unified",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "summaries/run",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "n1",
+      "name": "Unified Entry Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        120,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $json.body ?? $json;\nconst headers = $json.headers ?? {};\n\nconst expectedToken = String($env.INTERNAL_API_TOKEN ?? '').trim();\nconst providedToken = String(headers['x-internal-token'] ?? headers['X-Internal-Token'] ?? '').trim();\nif (!expectedToken || providedToken !== expectedToken) {\n  throw new Error('Invalid internal token on unified workflow request');\n}\n\nconst jobId = String(payload.jobId ?? '').trim();\nif (!jobId) {\n  throw new Error('jobId is required');\n}\n\nconst executionMode = String(payload.executionMode ?? '').trim().toLowerCase();\nif (!executionMode) {\n  throw new Error('executionMode is required and must be sync|batch');\n}\nif (!['sync', 'batch'].includes(executionMode)) {\n  throw new Error(`executionMode must be sync|batch, got '${executionMode}'`);\n}\n\nconst batchStrategy = String(payload.batchStrategy ?? '').trim().toLowerCase();\nif (!batchStrategy) {\n  throw new Error('batchStrategy is required and must be count_only');\n}\nif (batchStrategy !== 'count_only') {\n  throw new Error(`batchStrategy must be count_only, got '${batchStrategy}'`);\n}\n\nconst appBase = String($env.APP_INTERNAL_BASE_URL ?? 'http://app:8080').replace(/\\/+$/, '');\nconst openaiKey = String($env.OPENAI_API_KEY ?? '').trim();\nconst openaiModel = String($env.OPENAI_MODEL ?? 'gpt-4.1-mini').trim();\nconst completionWindow = String($env.OPENAI_BATCH_COMPLETION_WINDOW ?? '24h').trim();\nconst maxBatchSize = Math.max(1, Number($env.MAX_BATCH_SIZE ?? 20));\nconst maxWaitSeconds = Math.max(1, Number($env.MAX_WAIT_SECONDS ?? 60));\n\nif (!openaiKey) {\n  throw new Error('OPENAI_API_KEY is required in n8n environment.');\n}\n\nconst escapeSql = (v) => String(v ?? '').replace(/'/g, \"''\");\n\nreturn [{\n  json: {\n    jobId,\n    jobIdSql: escapeSql(jobId),\n    executionMode,\n    batchStrategy,\n    appBase,\n    expectedToken,\n    openaiKey,\n    openaiModel,\n    completionWindow,\n    maxBatchSize,\n    maxWaitSeconds,\n    appBaseSql: escapeSql(appBase),\n    expectedTokenSql: escapeSql(expectedToken),\n    openaiKeySql: escapeSql(openaiKey),\n    openaiModelSql: escapeSql(openaiModel),\n    completionWindowSql: escapeSql(completionWindow),\n    batchStrategySql: escapeSql(batchStrategy)\n  }\n}];"
+      },
+      "id": "n2",
+      "name": "Validate + Build Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.executionMode}}",
+              "operation": "equals",
+              "value2": "sync"
+            }
+          ]
+        }
+      },
+      "id": "n3",
+      "name": "IF Sync Mode",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        600,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE summary_jobs SET status='processing', started_at=COALESCE(started_at, NOW()), updated_at=NOW() WHERE id='{{$json.jobId}}';",
+        "options": {}
+      },
+      "id": "n4",
+      "name": "Sync Mark Processing (Postgres)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        860,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $node['Validate + Build Context'].json;\n\nconst jobId = String(ctx.jobId ?? '').trim();\nconst appBase = String(ctx.appBase ?? 'http://app:8080').replace(/\\/+$/, '');\nconst expectedToken = String(ctx.expectedToken ?? '').trim();\nconst openaiKey = String(ctx.openaiKey ?? '').trim();\nconst model = String(ctx.openaiModel ?? 'gpt-4.1-mini').trim();\nconst inputPrice = Number($env.OPENAI_INPUT_TOKEN_PRICE_PER_MILLION_USD ?? '0');\nconst outputPrice = Number($env.OPENAI_OUTPUT_TOKEN_PRICE_PER_MILLION_USD ?? '0');\n\nif (!jobId || !appBase || !expectedToken || !openaiKey) {\n  return [{ json: { ok: false, jobId, errorMessage: 'Missing sync context (job/app/token/openai key)' } }];\n}\n\nconst errText = (error, prefix) => {\n  const body = error?.response?.body ?? error?.context ?? error?.data ?? null;\n  const extra = body ? ` | details=${JSON.stringify(body).slice(0, 500)}` : '';\n  return `${prefix}: ${String(error?.message ?? error).slice(0, 500)}${extra}`;\n};\n\ntry {\n  let uploadResult;\n  try {\n    uploadResult = await this.helpers.httpRequest({\n      method: 'POST',\n      url: `${appBase}/api/internal/jobs/${encodeURIComponent(jobId)}/openai-file`,\n      headers: {\n        'x-internal-token': expectedToken,\n        'Content-Type': 'application/json',\n      },\n      body: { purpose: 'user_data' },\n      json: true,\n    });\n  } catch (error) {\n    return [{ json: { ok: false, jobId, errorMessage: errText(error, 'OpenAI file upload failed') } }];\n  }\n\n  const inputFileId = String(uploadResult?.file?.id ?? uploadResult?.id ?? '').trim();\n  if (!inputFileId) {\n    return [{\n      json: {\n        ok: false,\n        jobId,\n        errorMessage: `OpenAI file upload returned no file id: ${JSON.stringify(uploadResult).slice(0, 300)}`,\n      },\n    }];\n  }\n\n  const responsesRequest = {\n    model,\n    input: [\n      {\n        role: 'system',\n        content: [\n          {\n            type: 'input_text',\n            text: 'You are a concise technical summarizer. Summarize the document in 6-10 bullet points and end with one-paragraph executive summary.',\n          },\n        ],\n      },\n      {\n        role: 'user',\n        content: [\n          { type: 'input_file', file_id: inputFileId },\n          { type: 'input_text', text: 'Summarize this PDF document.' },\n        ],\n      },\n    ],\n    max_output_tokens: 550,\n    metadata: {\n      template: 'template_2',\n      job_id: jobId,\n    },\n  };\n\n  return [{\n    json: {\n      ok: true,\n      jobId,\n      appBase,\n      expectedToken,\n      openaiKey,\n      model,\n      inputPrice,\n      outputPrice,\n      startedAt: Date.now(),\n      responsesRequest,\n    },\n  }];\n} catch (error) {\n  return [{ json: { ok: false, jobId, errorMessage: errText(error, 'Sync prepare failed') } }];\n}\n"
+      },
+      "id": "n5",
+      "name": "Sync Prepare Input File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const prepared = $node['Sync Prepare Input File'].json ?? {};\nconst ctx = $node['Validate + Build Context'].json ?? {};\n\nconst jobId = String(prepared.jobId ?? ctx.jobId ?? '').trim();\nconst model = String(prepared.model ?? ctx.openaiModel ?? 'gpt-4.1-mini').trim();\n\nif (!prepared.ok) {\n  return [{ json: { ok: false, jobId, model, errorMessage: String(prepared.errorMessage ?? 'Sync prepare failed') } }];\n}\n\ntry {\n  const raw = await this.helpers.httpRequest({\n    method: 'POST',\n    url: 'https://api.openai.com/v1/responses',\n    headers: {\n      Authorization: `Bearer ${prepared.openaiKey}`,\n      'Content-Type': 'application/json',\n    },\n    body: prepared.responsesRequest,\n    json: true,\n  });\n\n  return [{\n    json: {\n      ok: true,\n      jobId,\n      model,\n      openaiRequestId: String(raw?.id ?? '').trim(),\n      raw,\n    }\n  }];\n} catch (error) {\n  const details = error?.response?.body ?? error?.context ?? error?.data ?? null;\n  const errorMessage = `OpenAI responses failed: ${String(error?.message ?? error).slice(0, 500)}${details ? ` | details=${JSON.stringify(details).slice(0, 500)}` : ''}`;\n  return [{\n    json: {\n      ok: false,\n      jobId,\n      model,\n      errorMessage\n    }\n  }];\n}\n"
+      },
+      "id": "n6",
+      "name": "Sync OpenAI Responses",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1640,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const prepared = $node['Sync Prepare Input File'].json ?? {};\nconst execution = $node['Sync OpenAI Responses'].json ?? {};\nconst ctx = $node['Validate + Build Context'].json ?? {};\n\nconst jobId = String(prepared.jobId ?? execution.jobId ?? ctx.jobId ?? '').trim();\nconst model = String(execution.model ?? prepared.model ?? ctx.openaiModel ?? 'gpt-4.1-mini').trim();\nconst inputPrice = Number(prepared.inputPrice ?? $env.OPENAI_INPUT_TOKEN_PRICE_PER_MILLION_USD ?? 0);\nconst outputPrice = Number(prepared.outputPrice ?? $env.OPENAI_OUTPUT_TOKEN_PRICE_PER_MILLION_USD ?? 0);\nconst startedAt = Number(prepared.startedAt ?? Date.now());\n\nconst parseOutputText = (raw) => {\n  if (!raw || typeof raw !== 'object') return '';\n  if (typeof raw.output_text === 'string' && raw.output_text.trim()) return raw.output_text.trim();\n  const output = Array.isArray(raw.output) ? raw.output : [];\n  const parts = [];\n  for (const item of output) {\n    const content = Array.isArray(item?.content) ? item.content : [];\n    for (const piece of content) {\n      if (piece?.type === 'output_text' && typeof piece.text === 'string') {\n        parts.push(piece.text);\n      }\n    }\n  }\n  return parts.join('\\n').trim();\n};\n\nconst estimateCost = (inTokens, outTokens) => {\n  const inputCost = (Number(inTokens) / 1_000_000) * Number(inputPrice);\n  const outputCost = (Number(outTokens) / 1_000_000) * Number(outputPrice);\n  return Number((inputCost + outputCost).toFixed(6));\n};\n\nconst escapeSql = (v) => String(v ?? '').replace(/'/g, \"''\");\n\nif (!prepared.ok) {\n  const errorMessage = String(prepared.errorMessage ?? 'Sync prepare failed');\n  return [{\n    json: {\n      ok: false,\n      jobId,\n      jobIdSql: escapeSql(jobId),\n      errorMessage,\n      errorMessageSql: escapeSql(errorMessage)\n    }\n  }];\n}\n\nif (!execution.ok) {\n  const errorMessage = String(execution.errorMessage ?? 'OpenAI responses failed');\n  return [{\n    json: {\n      ok: false,\n      jobId,\n      jobIdSql: escapeSql(jobId),\n      errorMessage,\n      errorMessageSql: escapeSql(errorMessage)\n    }\n  }];\n}\n\nconst raw = execution.raw ?? {};\nconst summaryText = parseOutputText(raw) || 'No summary generated.';\nconst usage = raw.usage ?? {};\nconst inputTokens = Number(usage.input_tokens ?? 0);\nconst outputTokens = Number(usage.output_tokens ?? 0);\nconst totalTokens = Number(usage.total_tokens ?? (inputTokens + outputTokens));\nconst openaiRequestId = String(execution.openaiRequestId ?? raw.id ?? '').trim();\nconst latencyMs = Math.max(1, Date.now() - startedAt);\nconst costEstUsd = estimateCost(inputTokens, outputTokens);\n\nreturn [{\n  json: {\n    ok: true,\n    jobId,\n    jobIdSql: escapeSql(jobId),\n    openaiRequestId,\n    openaiRequestIdSql: escapeSql(openaiRequestId),\n    summaryText,\n    summaryTextSql: escapeSql(summaryText),\n    model,\n    modelSql: escapeSql(model),\n    inputTokens,\n    outputTokens,\n    totalTokens,\n    latencyMs,\n    costEstUsd,\n    rawJsonSql: escapeSql(JSON.stringify(raw))\n  }\n}];\n"
+      },
+      "id": "n8",
+      "name": "Parse Sync Outcome",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1900,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO summary_results (job_id,user_id,summary_text,model,provider,input_tokens,output_tokens,total_tokens,latency_ms,cost_est_usd,raw_response_json,created_at)\nSELECT j.id, j.user_id, '{{$node[\"Parse Sync Outcome\"].json.summaryTextSql || \"\"}}', '{{$node[\"Parse Sync Outcome\"].json.modelSql || \"\"}}', 'openai', {{$node[\"Parse Sync Outcome\"].json.inputTokens || 0}}, {{$node[\"Parse Sync Outcome\"].json.outputTokens || 0}}, {{$node[\"Parse Sync Outcome\"].json.totalTokens || 0}}, {{$node[\"Parse Sync Outcome\"].json.latencyMs || 0}}, {{$node[\"Parse Sync Outcome\"].json.costEstUsd || 0}}, '{{$node[\"Parse Sync Outcome\"].json.rawJsonSql || \"{}\"}}'::jsonb, NOW()\nFROM summary_jobs j\nWHERE j.id='{{$node[\"Parse Sync Outcome\"].json.jobIdSql || \"\"}}'\n  AND '{{$node[\"Parse Sync Outcome\"].json.ok}}'='true'\nON CONFLICT (job_id) DO UPDATE SET\n  summary_text=EXCLUDED.summary_text,\n  model=EXCLUDED.model,\n  provider=EXCLUDED.provider,\n  input_tokens=EXCLUDED.input_tokens,\n  output_tokens=EXCLUDED.output_tokens,\n  total_tokens=EXCLUDED.total_tokens,\n  latency_ms=EXCLUDED.latency_ms,\n  cost_est_usd=EXCLUDED.cost_est_usd,\n  raw_response_json=EXCLUDED.raw_response_json,\n  created_at=NOW();",
+        "options": {}
+      },
+      "id": "n10",
+      "name": "Sync Upsert Result (Postgres)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2380,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE summary_jobs\nSET status=CASE WHEN '{{$node[\"Parse Sync Outcome\"].json.ok}}'='true' THEN 'completed' ELSE 'failed' END,\n    error_message=CASE WHEN '{{$node[\"Parse Sync Outcome\"].json.ok}}'='true' THEN NULL ELSE COALESCE(NULLIF('{{$node[\"Parse Sync Outcome\"].json.errorMessageSql || \"Sync workflow failed\"}}',''),'Sync workflow failed') END,\n    openai_request_id=CASE WHEN '{{$node[\"Parse Sync Outcome\"].json.ok}}'='true' THEN COALESCE(openai_request_id, NULLIF('{{$node[\"Parse Sync Outcome\"].json.openaiRequestIdSql || \"\"}}','')) ELSE openai_request_id END,\n    completed_at=NOW(),\n    updated_at=NOW()\nWHERE id='{{$node[\"Parse Sync Outcome\"].json.jobIdSql || \"\"}}';",
+        "options": {}
+      },
+      "id": "n11",
+      "name": "Sync Update Completed Job (Postgres)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2620,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH queued AS (\n  SELECT\n    j.id AS job_id,\n    j.user_id,\n    d.filename,\n    j.created_at\n  FROM summary_jobs j\n  INNER JOIN documents d ON d.id = j.document_id AND d.user_id = j.user_id\n  WHERE j.status='queued'\n    AND j.execution_mode='batch'\n    AND j.batch_strategy='{{$json.batchStrategySql}}'\n),\nmetrics AS (\n  SELECT\n    COUNT(*)::int AS queue_count\n  FROM queued\n)\nSELECT\n  q.job_id,\n  q.user_id,\n  q.filename,\n  '{{$json.appBaseSql}}' AS app_base,\n  '{{$json.expectedTokenSql}}' AS expected_token,\n  '{{$json.openaiKeySql}}' AS openai_key,\n  '{{$json.openaiModelSql}}' AS openai_model,\n  '{{$json.completionWindowSql}}' AS completion_window,\n  m.queue_count\nFROM queued q\nCROSS JOIN metrics m\nWHERE m.queue_count >= {{$json.maxBatchSize}}\nORDER BY q.created_at ASC\nLIMIT GREATEST({{$json.maxBatchSize}}, 100);",
+        "options": {}
+      },
+      "id": "n14",
+      "name": "Select Batch Candidates (Postgres)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        860,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map((i) => i.json ?? {}).filter(Boolean);\nif (rows.length === 0) return [{ json: { hasBatch: false } }];\n\nconst base = $node['Validate + Build Context'].json ?? {};\nconst first = rows[0];\nconst appBase = String(first.app_base ?? base.appBase ?? '').trim();\nconst expectedToken = String(first.expected_token ?? base.expectedToken ?? '').trim();\nconst openaiKey = String(first.openai_key ?? base.openaiKey ?? '').trim();\nconst openaiModel = String(first.openai_model ?? base.openaiModel ?? 'gpt-4.1-mini').trim();\nconst completionWindow = String(first.completion_window ?? base.completionWindow ?? '24h').trim();\nconst batchStrategy = String(base.batchStrategy ?? 'count_only').trim().toLowerCase();\nconst maxBatchSize = Math.max(1, Number(base.maxBatchSize ?? 20));\nconst maxWaitSeconds = Math.max(1, Number(base.maxWaitSeconds ?? 60));\n\nif (!appBase || !expectedToken || !openaiKey) throw new Error('Missing app/openai context for batch prepare stage');\n\nconst jobRows = rows\n  .map((r) => ({ jobId: String(r.job_id ?? '').trim(), filename: String(r.filename ?? '').trim() || 'document.pdf' }))\n  .filter((r) => r.jobId);\nif (jobRows.length === 0) return [{ json: { hasBatch: false } }];\n\nconst jobMap = new Map(jobRows.map((row) => [row.jobId, row]));\nconst candidateJobIds = [...jobMap.keys()];\n\nconst errText = (error, prefix) => {\n  const body = error?.response?.body ?? error?.context ?? error?.data ?? null;\n  const extra = body ? ` | details=${JSON.stringify(body).slice(0, 500)}` : '';\n  return `${prefix}: ${String(error?.message ?? error).slice(0, 500)}${extra}`;\n};\n\nlet openResult;\ntry {\n  openResult = await this.helpers.httpRequest({\n    method: 'POST',\n    url: `${appBase}/api/internal/batches/open`,\n    headers: {\n      'x-internal-token': expectedToken,\n      'Content-Type': 'application/json',\n    },\n    body: {\n      strategy: batchStrategy,\n      jobIds: candidateJobIds,\n      maxBatchSize,\n      maxWaitSeconds,\n    },\n    json: true,\n  });\n} catch (error) {\n  const statusCode = Number(error?.statusCode ?? error?.response?.statusCode ?? 0);\n  if (statusCode === 409) {\n    return [{ json: { hasBatch: false, reason: 'no_eligible_jobs' } }];\n  }\n  throw new Error(errText(error, 'Atomic batch claim failed'));\n}\n\nconst batchId = String(openResult?.batch?.id ?? '').trim();\nconst claimedJobIds = Array.isArray(openResult?.jobIds)\n  ? openResult.jobIds.map((id) => String(id ?? '').trim()).filter(Boolean)\n  : [];\n\nif (!batchId || claimedJobIds.length === 0) {\n  return [{ json: { hasBatch: false, reason: 'empty_claim' } }];\n}\n\nconst claimedRows = claimedJobIds.map((id) => jobMap.get(id)).filter(Boolean);\nif (claimedRows.length === 0) {\n  throw new Error('Atomic claim returned job ids outside current candidate list');\n}\n\nconst jsonlLines = [];\nfor (const item of claimedRows) {\n  let uploadResult;\n  try {\n    uploadResult = await this.helpers.httpRequest({\n      method: 'POST',\n      url: `${appBase}/api/internal/jobs/${encodeURIComponent(item.jobId)}/openai-file`,\n      headers: {\n        'x-internal-token': expectedToken,\n        'Content-Type': 'application/json',\n      },\n      body: { purpose: 'user_data' },\n      json: true,\n    });\n  } catch (error) {\n    throw new Error(errText(error, `OpenAI user_data upload failed for job ${item.jobId}`));\n  }\n\n  const fileId = String(uploadResult?.file?.id ?? uploadResult?.id ?? '').trim();\n  if (!fileId) {\n    throw new Error(`OpenAI user_data upload returned no file id for job ${item.jobId}: ${JSON.stringify(uploadResult).slice(0, 300)}`);\n  }\n\n  jsonlLines.push(JSON.stringify({\n    custom_id: item.jobId,\n    method: 'POST',\n    url: '/v1/responses',\n    body: {\n      model: openaiModel,\n      input: [\n        {\n          role: 'system',\n          content: [{ type: 'input_text', text: 'You are a concise technical summarizer. Summarize the document in 6-10 bullet points and end with one-paragraph executive summary.' }],\n        },\n        {\n          role: 'user',\n          content: [\n            { type: 'input_file', file_id: fileId },\n            { type: 'input_text', text: 'Summarize this PDF document.' },\n          ],\n        },\n      ],\n      max_output_tokens: 550,\n      metadata: { template: 'template_2', batch_id: batchId, job_id: item.jobId },\n    },\n  }));\n}\n\nlet inputUploadResult;\ntry {\n  inputUploadResult = await this.helpers.httpRequest({\n    method: 'POST',\n    url: `${appBase}/api/internal/openai/files/upload-text`,\n    headers: {\n      'x-internal-token': expectedToken,\n      'Content-Type': 'application/json',\n    },\n    body: {\n      purpose: 'batch',\n      filename: `batch-${batchId}.jsonl`,\n      contentType: 'application/jsonl',\n      content: `${jsonlLines.join('\\n')}\\n`,\n    },\n    json: true,\n  });\n} catch (error) {\n  throw new Error(errText(error, 'OpenAI batch input upload failed'));\n}\n\nconst inputFileId = String(inputUploadResult?.file?.id ?? inputUploadResult?.id ?? '').trim();\nif (!inputFileId) {\n  throw new Error(`OpenAI batch input upload returned no id: ${JSON.stringify(inputUploadResult).slice(0, 300)}`);\n}\n\nreturn [{\n  json: {\n    hasBatch: true,\n    batchId,\n    appBase,\n    expectedToken,\n    openaiKey,\n    openaiModel,\n    completionWindow,\n    inputFileId,\n    jobsSubmitted: claimedRows.length,\n    setupSql: 'SELECT 1;',\n  },\n}];"
+      },
+      "id": "n15",
+      "name": "Prepare + Submit OpenAI Batch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{Boolean($json.hasBatch)}}",
+              "operation": "true"
+            }
+          ]
+        }
+      },
+      "id": "n16",
+      "name": "IF Has Batch Work",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1380,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/batches",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$node[\"Prepare + Submit OpenAI Batch\"].json.openaiKey}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { input_file_id: $node[\"Prepare + Submit OpenAI Batch\"].json.inputFileId, endpoint: \"/v1/responses\", completion_window: $node[\"Prepare + Submit OpenAI Batch\"].json.completionWindow, metadata: { template: \"template_2\", batch_id: $node[\"Prepare + Submit OpenAI Batch\"].json.batchId } } }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "n18",
+      "name": "OpenAI Create Batch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1900,
+        320
+      ],
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2500
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $node['Prepare + Submit OpenAI Batch'].json;\nconst statusCode = Number($json.statusCode ?? $json.status ?? 0);\nconst raw = $json.body ?? $json;\n\nconst batchId = String(base.batchId ?? '').trim();\nconst inputFileId = String(base.inputFileId ?? '').trim();\nconst escapeSql = (v) => String(v ?? '').replace(/'/g, \"''\");\n\nconst shared = {\n  batchId,\n  appBase: base.appBase,\n  expectedToken: base.expectedToken,\n  openaiKey: base.openaiKey,\n  openaiModel: base.openaiModel\n};\n\nif (!batchId) {\n  return [{\n    json: {\n      ...shared,\n      openaiBatchId: '',\n      batchCreated: false,\n      prePollSql: 'SELECT 1;'\n    }\n  }];\n}\n\nif ($json.error || statusCode >= 400 || statusCode < 200) {\n  const message = escapeSql(String(($json.error && JSON.stringify($json.error)) || JSON.stringify(raw) || `OpenAI batch create failed (${statusCode || 'unknown'})`).slice(0, 900));\n  return [{\n    json: {\n      ...shared,\n      openaiBatchId: '',\n      batchCreated: false,\n      prePollSql: `UPDATE batch_windows SET status='failed', completed_at=NOW() WHERE id='${escapeSql(batchId)}';\\nUPDATE summary_jobs SET status='failed', error_message='${message}', completed_at=NOW(), updated_at=NOW() WHERE batch_id='${escapeSql(batchId)}' AND status IN ('queued','batched','processing');\\nUPDATE batch_items SET status='failed' WHERE batch_id='${escapeSql(batchId)}' AND status IN ('queued','processing');`\n    }\n  }];\n}\n\nconst openaiBatchId = String(raw.id ?? '').trim();\nif (!openaiBatchId) {\n  return [{\n    json: {\n      ...shared,\n      openaiBatchId: '',\n      batchCreated: false,\n      prePollSql: `UPDATE batch_windows SET status='failed', completed_at=NOW() WHERE id='${escapeSql(batchId)}';`\n    }\n  }];\n}\n\nconst sql = `UPDATE batch_windows SET status='processing', openai_batch_id='${escapeSql(openaiBatchId)}', input_file_id=COALESCE(input_file_id,NULLIF('${escapeSql(inputFileId)}','')) WHERE id='${escapeSql(batchId)}';\\nUPDATE summary_jobs SET status='processing', started_at=COALESCE(started_at,NOW()), openai_batch_id='${escapeSql(openaiBatchId)}', updated_at=NOW() WHERE batch_id='${escapeSql(batchId)}' AND status IN ('queued','batched');\\nUPDATE batch_items SET status='processing' WHERE batch_id='${escapeSql(batchId)}' AND status='queued';`;\n\nreturn [{\n  json: {\n    ...shared,\n    openaiBatchId,\n    batchCreated: true,\n    prePollSql: sql\n  }\n}];\n"
+      },
+      "id": "n19",
+      "name": "Parse Batch Create Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2140,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{$json.prePollSql ?? \"SELECT 1;\"}}",
+        "options": {}
+      },
+      "id": "n20",
+      "name": "Batch Persist Create State (Postgres)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2380,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $node['Parse Batch Create Response'].json;\nconst batchId = String(base.batchId ?? '').trim();\nconst openaiBatchId = String(base.openaiBatchId ?? '').trim();\nconst openaiKey = String(base.openaiKey ?? '').trim();\nconst openaiModel = String(base.openaiModel ?? 'gpt-4.1-mini').trim();\nconst batchInputPrice = Number($env.OPENAI_BATCH_INPUT_TOKEN_PRICE_PER_MILLION_USD ?? $env.OPENAI_INPUT_TOKEN_PRICE_PER_MILLION_USD ?? '0');\nconst batchOutputPrice = Number($env.OPENAI_BATCH_OUTPUT_TOKEN_PRICE_PER_MILLION_USD ?? $env.OPENAI_OUTPUT_TOKEN_PRICE_PER_MILLION_USD ?? '0');\nconst pollIntervalMs = Math.max(3000, Number($env.BATCH_POLLER_INTERVAL_MS ?? 20000));\nconst maxLoops = Math.max(1, Number($env.BATCH_POLLER_MAX_LOOPS ?? 45));\nconst runnerTaskTimeoutSec = Math.max(60, Number($env.N8N_RUNNERS_TASK_TIMEOUT ?? 300));\nconst runnerSafetyBufferSec = 20;\nconst pollBudgetMs = Math.max(1000, (runnerTaskTimeoutSec - runnerSafetyBufferSec) * 1000);\nconst maxLoopsByRunnerBudget = Math.max(1, Math.floor(pollBudgetMs / pollIntervalMs));\nconst effectiveMaxLoops = Math.max(1, Math.min(maxLoops, maxLoopsByRunnerBudget));\n\nconst escapeSql = (v) => String(v ?? '').replace(/'/g, \"''\");\nconst failSql = (message) => {\n  const msg = escapeSql(String(message ?? 'Batch poll failed').slice(0, 900));\n  return `BEGIN;\\nUPDATE batch_windows SET status='failed', completed_at=NOW() WHERE id='${escapeSql(batchId)}';\\nUPDATE summary_jobs SET status='failed', error_message='${msg}', completed_at=NOW(), updated_at=NOW() WHERE batch_id='${escapeSql(batchId)}' AND status IN ('queued','batched','processing');\\nUPDATE batch_items SET status='failed' WHERE batch_id='${escapeSql(batchId)}' AND status IN ('queued','processing');\\nCOMMIT;`;\n};\n\nif (!batchId) return [{ json: { batchId: '', terminalStatus: 'failed', resultSql: 'SELECT 1;' } }];\nif (!openaiBatchId || !openaiKey) return [{ json: { batchId, terminalStatus: 'failed', resultSql: failSql('Missing batch context for poll stage') } }];\n\nconst sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));\nconst parseOutputText = (raw) => {\n  if (!raw || typeof raw !== 'object') return '';\n  if (typeof raw.output_text === 'string' && raw.output_text.trim()) return raw.output_text.trim();\n  const output = Array.isArray(raw.output) ? raw.output : [];\n  const chunks = [];\n  for (const item of output) {\n    const content = Array.isArray(item?.content) ? item.content : [];\n    for (const piece of content) {\n      if (piece?.type === 'output_text' && typeof piece.text === 'string') chunks.push(piece.text);\n    }\n  }\n  return chunks.join('\\n').trim();\n};\nconst estimateBatchCost = (inTokens, outTokens) => {\n  const inputCost = (Number(inTokens) / 1_000_000) * batchInputPrice;\n  const outputCost = (Number(outTokens) / 1_000_000) * batchOutputPrice;\n  return Number((inputCost + outputCost).toFixed(6));\n};\n\ntry {\n  let terminal = null;\n  let remote = null;\n\n  for (let i = 0; i < effectiveMaxLoops; i += 1) {\n    remote = await this.helpers.httpRequest({\n      method: 'GET',\n      url: `https://api.openai.com/v1/batches/${encodeURIComponent(openaiBatchId)}`,\n      headers: { Authorization: `Bearer ${openaiKey}` },\n      json: true,\n    });\n\n    const status = String(remote.status ?? '').trim();\n    if (status === 'completed') { terminal = status; break; }\n    if (['failed', 'expired', 'cancelled', 'cancelling'].includes(status)) { terminal = status; break; }\n    await sleep(pollIntervalMs);\n  }\n\n  if (!terminal) {\n    const timeoutMsg = `Batch polling timed out before terminal status (loops=${effectiveMaxLoops}, intervalMs=${pollIntervalMs}, runnerTimeoutSec=${runnerTaskTimeoutSec}). Increase N8N_RUNNERS_TASK_TIMEOUT or lower BATCH_POLLER_INTERVAL_MS/BATCH_POLLER_MAX_LOOPS.`;\n    return [{ json: { batchId, terminalStatus: 'failed', resultSql: failSql(timeoutMsg) } }];\n  }\n\n  const sql = ['BEGIN;'];\n  if (terminal !== 'completed') {\n    const mapped = terminal === 'expired' ? 'expired' : 'failed';\n    const errMsg = escapeSql(String(remote?.errors?.[0]?.message ?? `OpenAI batch ended with status ${terminal}`));\n    sql.push(`UPDATE batch_windows SET status='${mapped}', completed_at=NOW(), error_file_id=COALESCE(error_file_id, NULLIF('${escapeSql(remote?.error_file_id ?? '')}','')) WHERE id='${escapeSql(batchId)}';`);\n    sql.push(`UPDATE summary_jobs SET status='${mapped === 'expired' ? 'expired' : 'failed'}', error_message='${errMsg}', completed_at=NOW(), updated_at=NOW() WHERE batch_id='${escapeSql(batchId)}' AND status IN ('queued','batched','processing');`);\n    sql.push(`UPDATE batch_items SET status='failed' WHERE batch_id='${escapeSql(batchId)}' AND status IN ('queued','processing');`);\n    sql.push('COMMIT;');\n    return [{ json: { batchId, terminalStatus: mapped, resultSql: sql.join('\\n') } }];\n  }\n\n  const outputFileId = String(remote.output_file_id ?? '').trim();\n  if (!outputFileId) return [{ json: { batchId, terminalStatus: 'failed', resultSql: failSql('Batch completed without output_file_id') } }];\n\n  const outputText = await this.helpers.httpRequest({\n    method: 'GET',\n    url: `https://api.openai.com/v1/files/${encodeURIComponent(outputFileId)}/content`,\n    headers: { Authorization: `Bearer ${openaiKey}` },\n    json: false,\n    encoding: 'utf8',\n  });\n\n  const lines = String(outputText ?? '').split('\\n').map((x) => x.trim()).filter(Boolean);\n\n  for (const line of lines) {\n    let parsed;\n    try { parsed = JSON.parse(line); } catch { continue; }\n\n    const jobId = String(parsed.custom_id ?? '').trim();\n    if (!jobId) continue;\n\n    const statusCode = Number(parsed?.response?.status_code ?? 0);\n    const body = parsed?.response?.body ?? null;\n\n    if (statusCode >= 200 && statusCode < 300 && body) {\n      const summaryText = parseOutputText(body) || 'No summary generated.';\n      const usage = body.usage ?? {};\n      const inTok = Number(usage.input_tokens ?? 0);\n      const outTok = Number(usage.output_tokens ?? 0);\n      const totalTok = Number(usage.total_tokens ?? (inTok + outTok));\n      const reqId = String(body.id ?? '').trim();\n      const model = String(body.model ?? openaiModel);\n      const cost = estimateBatchCost(inTok, outTok);\n      const raw = escapeSql(JSON.stringify(body));\n\n      sql.push(`UPDATE summary_jobs SET status='completed', error_message=NULL, openai_request_id=COALESCE(openai_request_id,NULLIF('${escapeSql(reqId)}','')), completed_at=NOW(), updated_at=NOW() WHERE id='${escapeSql(jobId)}';`);\n      sql.push(`UPDATE batch_items SET status='completed' WHERE batch_id='${escapeSql(batchId)}' AND job_id='${escapeSql(jobId)}';`);\n      sql.push(`INSERT INTO summary_results (job_id,user_id,summary_text,model,provider,input_tokens,output_tokens,total_tokens,latency_ms,cost_est_usd,raw_response_json,created_at)\nSELECT j.id, j.user_id, '${escapeSql(summaryText)}', '${escapeSql(model)}', 'openai', ${inTok}, ${outTok}, ${totalTok}, NULL, ${cost}, '${raw}'::jsonb, NOW()\nFROM summary_jobs j WHERE j.id='${escapeSql(jobId)}'\nON CONFLICT (job_id) DO UPDATE SET\n  summary_text=EXCLUDED.summary_text,\n  model=EXCLUDED.model,\n  provider=EXCLUDED.provider,\n  input_tokens=EXCLUDED.input_tokens,\n  output_tokens=EXCLUDED.output_tokens,\n  total_tokens=EXCLUDED.total_tokens,\n  latency_ms=EXCLUDED.latency_ms,\n  cost_est_usd=EXCLUDED.cost_est_usd,\n  raw_response_json=EXCLUDED.raw_response_json,\n  created_at=NOW();`);\n    } else {\n      const message = escapeSql(String(parsed?.error?.message ?? `Batch item failed (${statusCode || 'unknown'})`));\n      sql.push(`UPDATE summary_jobs SET status='failed', error_message='${message}', completed_at=NOW(), updated_at=NOW() WHERE id='${escapeSql(jobId)}';`);\n      sql.push(`UPDATE batch_items SET status='failed' WHERE batch_id='${escapeSql(batchId)}' AND job_id='${escapeSql(jobId)}';`);\n    }\n  }\n\n  sql.push(`UPDATE batch_windows SET status='completed', completed_at=NOW(), output_file_id=COALESCE(output_file_id,NULLIF('${escapeSql(outputFileId)}','')), error_file_id=COALESCE(error_file_id,NULLIF('${escapeSql(remote?.error_file_id ?? '')}','')) WHERE id='${escapeSql(batchId)}';`);\n  sql.push('COMMIT;');\n  return [{ json: { batchId, terminalStatus: 'completed', resultSql: sql.join('\\n') } }];\n} catch (error) {\n  return [{ json: { batchId, terminalStatus: 'failed', resultSql: failSql(String(error?.message ?? 'Batch poll failed')) } }];\n}\n"
+      },
+      "id": "n21",
+      "name": "Poll Batch + Build SQL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{$json.resultSql ?? \"SELECT 1;\"}}",
+        "options": {}
+      },
+      "id": "n22",
+      "name": "Batch Apply SQL (Postgres)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3100,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "benchmarks/run",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "n23",
+      "name": "Benchmark Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        120,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $json.body ?? $json;\nconst reqHeaders = $json.headers ?? {};\nconst benchmarkRunId = String(input.benchmarkRunId ?? '').trim();\nif (!benchmarkRunId) throw new Error('benchmarkRunId is required for wf_admin_benchmark_runner');\n\nconst expectedToken = String($env.INTERNAL_API_TOKEN ?? '').trim();\nconst providedToken = String(reqHeaders['x-internal-token'] ?? reqHeaders['X-Internal-Token'] ?? '').trim();\nif (!expectedToken || providedToken !== expectedToken) throw new Error('Invalid internal token for wf_admin_benchmark_runner');\n\nconst appBase = String($env.APP_INTERNAL_BASE_URL ?? 'http://app:8080').replace(/\\/+$/, '');\nconst openaiKey = String($env.OPENAI_API_KEY ?? '').trim();\nconst openaiModel = String($env.OPENAI_MODEL ?? 'gpt-4.1-mini').trim();\nconst completionWindow = String($env.OPENAI_BATCH_COMPLETION_WINDOW ?? '24h').trim();\nconst inputPrice = Number($env.OPENAI_INPUT_TOKEN_PRICE_PER_MILLION_USD ?? '0');\nconst outputPrice = Number($env.OPENAI_OUTPUT_TOKEN_PRICE_PER_MILLION_USD ?? '0');\nconst batchInputPrice = Number($env.OPENAI_BATCH_INPUT_TOKEN_PRICE_PER_MILLION_USD ?? $env.OPENAI_INPUT_TOKEN_PRICE_PER_MILLION_USD ?? '0');\nconst batchOutputPrice = Number($env.OPENAI_BATCH_OUTPUT_TOKEN_PRICE_PER_MILLION_USD ?? $env.OPENAI_OUTPUT_TOKEN_PRICE_PER_MILLION_USD ?? '0');\nconst repetitions = Math.max(1, Number(input.repetitions ?? $env.BENCHMARK_REPETITIONS ?? 3));\nconst jobsPerRun = Math.max(1, Number(input.jobsPerRun ?? $env.BENCHMARK_JOBS_PER_RUN ?? 20));\nconst maxBatchSize = Math.max(1, Number(input.maxBatchSize ?? $env.MAX_BATCH_SIZE ?? 20));\nconst maxWaitSeconds = Math.max(1, Number(input.maxWaitSeconds ?? $env.MAX_WAIT_SECONDS ?? 60));\nconst pollIntervalMs = Math.max(5000, Number($env.BENCHMARK_BATCH_POLL_INTERVAL_MS ?? 20000));\nconst batchMaxWaitMs = Math.max(60000, Number($env.BENCHMARK_BATCH_MAX_WAIT_MS ?? 7200000));\nconst datasetTier = String(input.datasetTier ?? 'all').trim().toLowerCase();\nif (!openaiKey) throw new Error('OPENAI_API_KEY is required in n8n environment for benchmark workflow.');\n\nconst parseMaybeJson = (value) => {\n  if (value == null) return {};\n  if (typeof value === 'object') return value;\n  if (typeof value === 'string') {\n    try { return JSON.parse(value); } catch { return { raw: value }; }\n  }\n  return { raw: String(value) };\n};\n\nconst postJson = async (url, body, headers = {}) => this.helpers.httpRequest({ method: 'POST', url, headers, body, json: true });\nconst getJson = async (url, headers = {}) => this.helpers.httpRequest({ method: 'GET', url, headers, json: true });\nconst getText = async (url, headers = {}) => this.helpers.httpRequest({ method: 'GET', url, headers, json: false, encoding: 'utf8' });\nconst sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));\n\nconst uploadMultipart = async ({ filename, content, contentType = 'application/jsonl' }) => {\n  return this.helpers.httpRequest({\n    method: 'POST',\n    url: `${appBase}/api/internal/openai/files/upload-text`,\n    headers: {\n      'x-internal-token': expectedToken,\n      'Content-Type': 'application/json',\n    },\n    body: {\n      purpose: 'batch',\n      filename,\n      contentType,\n      content,\n    },\n    json: true,\n  });\n};\n\nconst estimateCost = (inTokens, outTokens) => {\n  const inputCost = (Number(inTokens) / 1_000_000) * inputPrice;\n  const outputCost = (Number(outTokens) / 1_000_000) * outputPrice;\n  return Number((inputCost + outputCost).toFixed(6));\n};\n\nconst estimateBatchCost = (inTokens, outTokens) => {\n  const inputCost = (Number(inTokens) / 1_000_000) * batchInputPrice;\n  const outputCost = (Number(outTokens) / 1_000_000) * batchOutputPrice;\n  return Number((inputCost + outputCost).toFixed(6));\n};\n\nconst percentile = (values, p) => {\n  if (!Array.isArray(values) || values.length === 0) return 0;\n  const sorted = [...values].sort((a, b) => a - b);\n  const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));\n  return sorted[idx];\n};\n\nconst parseOutputText = (raw) => {\n  if (!raw || typeof raw !== 'object') return '';\n  if (typeof raw.output_text === 'string' && raw.output_text.trim()) return raw.output_text.trim();\n  const output = Array.isArray(raw.output) ? raw.output : [];\n  const chunks = [];\n  for (const item of output) {\n    const content = Array.isArray(item?.content) ? item.content : [];\n    for (const piece of content) {\n      if (piece?.type === 'output_text' && typeof piece.text === 'string') chunks.push(piece.text);\n    }\n  }\n  return chunks.join('\\n').trim();\n};\n\nconst updateBenchmarkStatus = async (payload) => {\n  await postJson(`${appBase}/api/internal/benchmarks/${encodeURIComponent(benchmarkRunId)}/status`, payload, {\n    'Content-Type': 'application/json',\n    'x-internal-token': expectedToken,\n  });\n};\n\nconst buildBenchmarkInputsForTier = (tier, count) => {\n  const tierConfig = {\n    S: { sections: 6, repeat: 20, profile: 'short technical memo (1-3 pages)' },\n    M: { sections: 14, repeat: 55, profile: 'medium engineering report (8-12 pages)' },\n    L: { sections: 30, repeat: 95, profile: 'long architecture dossier (25-35 pages)' },\n  };\n  const cfg = tierConfig[tier] ?? tierConfig.S;\n  return Array.from({ length: count }, (_unused, i) => {\n    const intro = `Benchmark document ${i + 1} for tier ${tier}: ${cfg.profile}.`;\n    const sections = Array.from({ length: cfg.sections }, (_u, idx) => `Section ${idx + 1}: This section explains distributed workflow design, queue backpressure management, idempotent ingestion, and operational cost controls for asynchronous AI workloads.`).join(' ');\n    const bullets = Array.from({ length: cfg.repeat }, (_u, idx) => `Point ${idx + 1}: Prioritize reliable retries, deterministic status transitions, and bounded time-to-completion.`).join(' ');\n    return `${intro} ${sections} ${bullets}`;\n  });\n};\n\nconst runSyncRepetition = async ({ tier, repetition }) => {\n  const inputs = buildBenchmarkInputsForTier(tier, jobsPerRun);\n  const latencies = [];\n  let totalCostEstUsd = 0;\n  let jobsCompleted = 0;\n  const started = Date.now();\n\n  for (let i = 0; i < inputs.length; i += 1) {\n    const reqBody = {\n      model: openaiModel,\n      input: [\n        { role: 'system', content: [{ type: 'input_text', text: 'You are a concise technical summarizer. Summarize the document in 6-10 bullet points and end with one-paragraph executive summary.' }] },\n        { role: 'user', content: [{ type: 'input_text', text: `Summarize this PDF text:\\n\\n${inputs[i]}` }] },\n      ],\n      max_output_tokens: 550,\n      metadata: { template: 'template_2_benchmark', mode: 'sync', tier, repetition: String(repetition), index: String(i + 1) },\n    };\n\n    const oneStart = Date.now();\n    const raw = await postJson('https://api.openai.com/v1/responses', reqBody, {\n      Authorization: `Bearer ${openaiKey}`,\n      'Content-Type': 'application/json',\n    });\n\n    const summaryText = parseOutputText(raw) || 'No summary generated.';\n    const usage = raw.usage ?? {};\n    const inputTokens = Number(usage.input_tokens ?? 0);\n    const outputTokens = Number(usage.output_tokens ?? 0);\n\n    jobsCompleted += 1;\n    latencies.push(Date.now() - oneStart);\n    totalCostEstUsd += estimateCost(inputTokens, outputTokens);\n    if (!summaryText) throw new Error('Benchmark sync response returned empty summary');\n  }\n\n  const totalTimeMs = Date.now() - started;\n  return {\n    mode: 'sync', strategy: 'sync_baseline', datasetTier: tier,\n    jobsSubmitted: jobsPerRun, jobsCompleted, totalTimeMs,\n    avgLatencyMs: latencies.length ? Math.floor(latencies.reduce((a, n) => a + n, 0) / latencies.length) : 0,\n    p95LatencyMs: percentile(latencies, 95),\n    totalCostEstUsd: Number(totalCostEstUsd.toFixed(6)),\n  };\n};\n\nconst waitForBatch = async (openaiBatchId) => {\n  const started = Date.now();\n  while (true) {\n    const payload = await getJson(`https://api.openai.com/v1/batches/${encodeURIComponent(openaiBatchId)}`, { Authorization: `Bearer ${openaiKey}` });\n    const status = String(payload.status ?? '').trim();\n    if (status === 'completed') return payload;\n    if (['failed', 'expired', 'cancelled', 'cancelling'].includes(status)) throw new Error(`Benchmark batch ended with status '${status}'`);\n    if (Date.now() - started > batchMaxWaitMs) throw new Error('Benchmark batch wait timed out');\n    await sleep(pollIntervalMs);\n  }\n};\n\nconst runBatchRepetition = async ({ tier, strategy, repetition }) => {\n  const inputs = buildBenchmarkInputsForTier(tier, jobsPerRun);\n  const items = inputs.map((text, index) => ({ customId: `benchmark-${strategy}-${tier}-r${repetition}-j${index + 1}`, text }));\n\n    const lines = items.map((item) => JSON.stringify({\n    custom_id: item.customId, method: 'POST', url: '/v1/responses',\n    body: {\n      model: openaiModel,\n      input: [\n        { role: 'system', content: [{ type: 'input_text', text: 'You are a concise technical summarizer. Summarize the document in 6-10 bullet points and end with one-paragraph executive summary.' }] },\n        { role: 'user', content: [{ type: 'input_text', text: `Summarize this PDF text:\\n\\n${item.text}` }] },\n      ],\n      max_output_tokens: 550,\n      metadata: { template: 'template_2_benchmark', mode: 'batch', tier, strategy, repetition: String(repetition) },\n    },\n  }));\n\n  const start = Date.now();\n\n  const uploadJson = await uploadMultipart({\n    filename: `benchmark-${tier}-${strategy}-r${repetition}.jsonl`,\n    content: `${lines.join(\"\\n\")}\\n`,\n    contentType: 'application/jsonl',\n  });\n\n  const inputFileId = String(uploadJson?.file?.id ?? uploadJson?.id ?? '').trim();\n  if (!inputFileId) throw new Error(`Benchmark batch input upload returned no file id: ${JSON.stringify(uploadJson).slice(0, 300)}`);\n\n  const submitJson = await postJson('https://api.openai.com/v1/batches', {\n    input_file_id: inputFileId, endpoint: '/v1/responses', completion_window: completionWindow,\n    metadata: { template: 'template_2_benchmark', tier, strategy, repetition: String(repetition) },\n  }, { Authorization: `Bearer ${openaiKey}`, 'Content-Type': 'application/json' });\n\n  const openaiBatchId = String(submitJson.id ?? '').trim();\n  if (!openaiBatchId) throw new Error('Benchmark batch submit returned no batch id');\n\n  const completed = await waitForBatch(openaiBatchId);\n  const outputFileId = String(completed.output_file_id ?? '').trim();\n  if (!outputFileId) throw new Error('Benchmark batch completed without output_file_id');\n\n  const outputText = await getText(`https://api.openai.com/v1/files/${encodeURIComponent(outputFileId)}/content`, { Authorization: `Bearer ${openaiKey}` });\n\n  const outputMap = new Map();\n  for (const line of String(outputText).split('\\n')) {\n    const trimmed = line.trim();\n    if (!trimmed) continue;\n    try {\n      const parsed = JSON.parse(trimmed);\n      const customId = String(parsed.custom_id ?? '').trim();\n      if (!customId) continue;\n      outputMap.set(customId, parsed);\n    } catch {\n      // ignore malformed lines\n    }\n  }\n\n  let jobsCompleted = 0;\n  let totalCostEstUsd = 0;\n  for (const item of items) {\n    const outputItem = outputMap.get(item.customId);\n    const statusCode = Number(outputItem?.response?.status_code ?? 0);\n    const body = outputItem?.response?.body ?? null;\n    if (statusCode < 200 || statusCode >= 300 || !body) continue;\n\n    const usage = body.usage ?? {};\n    const inputTokens = Number(usage.input_tokens ?? 0);\n    const outputTokens = Number(usage.output_tokens ?? 0);\n    jobsCompleted += 1;\n    totalCostEstUsd += estimateBatchCost(inputTokens, outputTokens);\n  }\n\n  const totalTimeMs = Date.now() - start;\n  const avgLatencyMs = jobsCompleted > 0 ? Math.floor(totalTimeMs / jobsCompleted) : 0;\n  return {\n    mode: 'batch', strategy, datasetTier: tier,\n    jobsSubmitted: jobsPerRun, jobsCompleted, totalTimeMs, avgLatencyMs,\n    p95LatencyMs: avgLatencyMs,\n    totalCostEstUsd: Number(totalCostEstUsd.toFixed(6)),\n  };\n};\n\nconst pickMedianSample = (samples) => {\n  if (!Array.isArray(samples) || samples.length === 0) throw new Error('Cannot pick median sample from empty array');\n  const sorted = [...samples].sort((a, b) => a.totalTimeMs - b.totalTimeMs);\n  return sorted[Math.floor(sorted.length / 2)];\n};\n\nconst tiers = datasetTier === 'all' ? ['S', 'M', 'L'] : [datasetTier.toUpperCase()];\nconst scenarios = [\n  { mode: 'sync', strategy: 'sync_baseline' },\n  { mode: 'batch', strategy: 'count_only' },\n];\n\nawait updateBenchmarkStatus({ status: 'processing' });\n\ntry {\n  const matrix = [];\n  const rawRepetitions = [];\n\n  for (const tier of tiers) {\n    for (const scenario of scenarios) {\n      const reps = [];\n      for (let repetition = 1; repetition <= repetitions; repetition += 1) {\n        reps.push(scenario.mode === 'sync'\n          ? await runSyncRepetition({ tier, repetition })\n          : await runBatchRepetition({ tier, strategy: scenario.strategy, repetition }));\n      }\n      rawRepetitions.push({ tier, mode: scenario.mode, strategy: scenario.strategy, repetitions: reps });\n      matrix.push(pickMedianSample(reps));\n    }\n  }\n\n  const fastest = [...matrix].sort((a, b) => a.totalTimeMs - b.totalTimeMs)[0];\n  const cheapest = [...matrix].sort((a, b) => a.totalCostEstUsd - b.totalCostEstUsd)[0];\n\n  const report = {\n    generatedAt: new Date().toISOString(),\n    execution: 'real_openai_via_n8n',\n    settings: { repetitions, jobsPerRun, openaiModel, completionWindow, maxBatchSize, maxWaitSeconds },\n    tiers,\n    defaultRecommendation: { speed: fastest, cost: cheapest },\n    notes: [\n      'All benchmark scenarios were executed against live OpenAI APIs from n8n.',\n      'Batch p95 latency is normalized from batch completion time because per-item latency is not returned by Batch API outputs.',\n      'Compare sync baseline and count_only batch before changing runtime defaults.',\n    ],\n    matrix,\n    rawRepetitions,\n  };\n\n  await updateBenchmarkStatus({ status: 'completed', samples: matrix, report });\n  return [{ json: { ok: true, benchmarkRunId, status: 'completed', samples: matrix.length } }];\n} catch (error) {\n  const msg = String(error?.message ?? 'wf_admin_benchmark_runner failed');\n  await updateBenchmarkStatus({ status: 'failed', error: msg, report: { error: msg, failedAt: new Date().toISOString() } });\n  throw error;\n}\n"
+      },
+      "id": "n24",
+      "name": "Run Benchmark Matrix",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{String($node[\"Parse Batch Create Response\"].json.batchCreated)}}",
+              "operation": "equals",
+              "value2": "true"
+            }
+          ]
+        }
+      },
+      "id": "n25",
+      "name": "IF Batch Created",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2620,
+        320
+      ]
+    }
+  ],
+  "connections": {
+    "Unified Entry Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate + Build Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate + Build Context": {
+      "main": [
+        [
+          {
+            "node": "IF Sync Mode",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Sync Mode": {
+      "main": [
+        [
+          {
+            "node": "Sync Mark Processing (Postgres)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Select Batch Candidates (Postgres)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Mark Processing (Postgres)": {
+      "main": [
+        [
+          {
+            "node": "Sync Prepare Input File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Prepare Input File": {
+      "main": [
+        [
+          {
+            "node": "Sync OpenAI Responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Sync Outcome": {
+      "main": [
+        [
+          {
+            "node": "Sync Upsert Result (Postgres)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Upsert Result (Postgres)": {
+      "main": [
+        [
+          {
+            "node": "Sync Update Completed Job (Postgres)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Batch Candidates (Postgres)": {
+      "main": [
+        [
+          {
+            "node": "Prepare + Submit OpenAI Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare + Submit OpenAI Batch": {
+      "main": [
+        [
+          {
+            "node": "IF Has Batch Work",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Has Batch Work": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Create Batch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "OpenAI Create Batch": {
+      "main": [
+        [
+          {
+            "node": "Parse Batch Create Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Batch Create Response": {
+      "main": [
+        [
+          {
+            "node": "Batch Persist Create State (Postgres)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch Persist Create State (Postgres)": {
+      "main": [
+        [
+          {
+            "node": "IF Batch Created",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Batch + Build SQL": {
+      "main": [
+        [
+          {
+            "node": "Batch Apply SQL (Postgres)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Benchmark Webhook": {
+      "main": [
+        [
+          {
+            "node": "Run Benchmark Matrix",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Batch Created": {
+      "main": [
+        [
+          {
+            "node": "Poll Batch + Build SQL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Sync OpenAI Responses": {
+      "main": [
+        [
+          {
+            "node": "Parse Sync Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "meta": {
+    "template": "Template_2",
+    "purpose": "Single-canvas workflow with mode branch and explicit OpenAI + Postgres service blocks for sync and batch"
+  }
+}

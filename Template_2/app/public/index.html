@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Template 2 - Batch PDF Summarization</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1 class="page-title">Template 2 - Batch PDF Summarization</h1>
+      <p class="muted page-subtitle">
+        Multi-user PDF summarization with sync and async batch execution.
+      </p>
+
+      <section class="card" id="auth-card">
+        <h2>Authentication</h2>
+        <div class="grid-2">
+          <form id="register-form" class="stacked-form">
+            <h3>Register</h3>
+            <label for="register-email">Email</label>
+            <input id="register-email" type="email" required />
+            <label for="register-password">Password</label>
+            <input id="register-password" type="password" required minlength="8" />
+            <button type="submit">Create Account</button>
+          </form>
+
+          <form id="login-form" class="stacked-form">
+            <h3>Login</h3>
+            <label for="login-email">Email</label>
+            <input id="login-email" type="email" required />
+            <label for="login-password">Password</label>
+            <input id="login-password" type="password" required />
+            <button type="submit">Login</button>
+          </form>
+        </div>
+        <pre id="auth-output" class="output"></pre>
+      </section>
+
+      <section id="app-shell" class="hidden">
+        <section class="card">
+          <div class="header-row">
+            <h2>Session</h2>
+            <button id="logout-btn" class="danger">Logout</button>
+          </div>
+          <p id="session-info" class="muted"></p>
+        </section>
+
+        <section class="card">
+          <h2>Upload PDF</h2>
+          <form id="upload-form" class="stacked-form">
+            <label for="pdf-file">PDF file</label>
+            <input id="pdf-file" type="file" accept="application/pdf" required />
+            <button type="submit">Upload</button>
+          </form>
+          <pre id="upload-output" class="output"></pre>
+        </section>
+
+        <section class="card">
+          <h2>Run Summarization</h2>
+          <form id="run-form" class="stacked-form">
+            <label for="profile">Profile</label>
+            <select id="profile"></select>
+
+            <label for="document-id">Document</label>
+            <select id="document-id"></select>
+
+            <label for="execution-mode">Execution Mode</label>
+            <select id="execution-mode">
+              <option value="sync">sync</option>
+              <option value="batch">batch</option>
+            </select>
+
+            <label for="batch-strategy">Batch Strategy</label>
+            <select id="batch-strategy">
+              <option value="count_only">count_only</option>
+            </select>
+
+            <button type="submit">Submit Job</button>
+          </form>
+          <pre id="run-output" class="output"></pre>
+        </section>
+
+        <section class="card">
+          <div class="header-row">
+            <h2>My Documents</h2>
+            <button id="refresh-documents">Refresh</button>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Filename</th>
+                <th>Size</th>
+                <th>Pages</th>
+                <th>Created</th>
+                <th>Expires</th>
+              </tr>
+            </thead>
+            <tbody id="documents-body"></tbody>
+          </table>
+        </section>
+
+        <section class="card">
+          <div class="header-row">
+            <h2>My Jobs</h2>
+            <button id="refresh-jobs">Refresh</button>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Job ID</th>
+                <th>Document</th>
+                <th>Mode</th>
+                <th>Strategy</th>
+                <th>Status</th>
+                <th>Provider/Model</th>
+                <th>Tokens</th>
+                <th>Cost (USD)</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody id="jobs-body"></tbody>
+          </table>
+        </section>
+
+        <section class="card">
+          <h2>Selected Job Detail</h2>
+          <pre id="job-detail" class="output"></pre>
+        </section>
+
+        <section class="card hidden" id="admin-card">
+          <div class="header-row">
+            <h2>Admin / God UI</h2>
+            <button id="refresh-admin">Refresh Now</button>
+          </div>
+
+          <div class="admin-grid">
+            <div>
+              <h3>Metrics</h3>
+              <pre id="admin-metrics" class="output"></pre>
+            </div>
+            <div>
+              <h3>Benchmark</h3>
+              <form id="benchmark-form" class="stacked-form compact">
+                <label for="benchmark-tier">Dataset Tier</label>
+                <select id="benchmark-tier">
+                  <option value="all">all</option>
+                  <option value="S">S</option>
+                  <option value="M">M</option>
+                  <option value="L">L</option>
+                </select>
+                <button type="submit">Run Benchmark</button>
+              </form>
+              <pre id="benchmark-output" class="output"></pre>
+            </div>
+          </div>
+
+          <h3>All Jobs</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Job ID</th>
+                <th>User</th>
+                <th>Status</th>
+                <th>Mode</th>
+                <th>Strategy</th>
+                <th>Cost</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody id="admin-jobs-body"></tbody>
+          </table>
+
+          <h3>Batch Windows</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Batch ID</th>
+                <th>Strategy</th>
+                <th>Status</th>
+                <th>Jobs</th>
+                <th>Completed</th>
+                <th>Failed</th>
+                <th>Opened</th>
+              </tr>
+            </thead>
+            <tbody id="admin-batches-body"></tbody>
+          </table>
+        </section>
+      </section>
+    </main>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

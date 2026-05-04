@@ -1,0 +1,43 @@
+{
+  "id": "custom_profile_starter",
+  "name": "Custom Profile Starter",
+  "description": "Starter profile scaffold for your own multi-user AI workflow.",
+  "status": "planned",
+  "isExample": false,
+  "fields": [
+    {
+      "key": "executionMode",
+      "label": "Execution Mode",
+      "type": "select",
+      "required": true,
+      "default": "sync",
+      "options": [
+        { "label": "Sync", "value": "sync" },
+        { "label": "Batch", "value": "batch" }
+      ],
+      "helpText": "Sync returns early and completes via n8n. Batch queues jobs for n8n windowing."
+    },
+    {
+      "key": "batchStrategy",
+      "label": "Batch Strategy",
+      "type": "select",
+      "required": true,
+      "default": "count_only",
+      "options": [
+        { "label": "Count Only", "value": "count_only" }
+      ],
+      "helpText": "Only count-based batch release is supported in the default template runtime."
+    }
+  ],
+  "execution": {
+    "webhookPath": "summaries/run",
+    "payloadMap": {
+      "profileId": "profileId",
+      "jobId": "jobId",
+      "userId": "userId",
+      "documentId": "documentId",
+      "executionMode": "executionMode",
+      "batchStrategy": "batchStrategy"
+    }
+  }
+}

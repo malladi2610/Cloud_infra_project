@@ -1,0 +1,842 @@
+
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  + create
+
+Terraform will perform the following actions:
+
+  # azurerm_container_app.frontend_api will be created
+  + resource "azurerm_container_app" "frontend_api" {
+      + container_app_environment_id  = (known after apply)
+      + custom_domain_verification_id = (sensitive value)
+      + id                            = (known after apply)
+      + latest_revision_fqdn          = (known after apply)
+      + latest_revision_name          = (known after apply)
+      + location                      = (known after apply)
+      + name                          = "template2batch-dev-fa"
+      + outbound_ip_addresses         = (known after apply)
+      + resource_group_name           = "template2batch-dev-rg"
+      + revision_mode                 = "Single"
+      + tags                          = {
+          + "environment" = "dev"
+          + "managed_by"  = "terraform"
+          + "owner"       = "subhash"
+          + "project"     = "template2batch"
+          + "workload"    = "batch-pdf-summarization"
+        }
+
+      + identity {
+          + identity_ids = (known after apply)
+          + principal_id = (known after apply)
+          + tenant_id    = (known after apply)
+          + type         = "UserAssigned"
+        }
+
+      + ingress {
+          + allow_insecure_connections = false
+          + custom_domain              = (known after apply)
+          + external_enabled           = true
+          + fqdn                       = (known after apply)
+          + target_port                = 8080
+          + transport                  = "auto"
+
+          + traffic_weight {
+              + latest_revision = true
+              + percentage      = 100
+            }
+        }
+
+      + registry {
+          + identity = (known after apply)
+          + server   = (known after apply)
+        }
+
+      + secret {
+          # At least one attribute in this block is (or was) sensitive,
+          # so its contents will not be displayed.
+        }
+      + secret {
+          # At least one attribute in this block is (or was) sensitive,
+          # so its contents will not be displayed.
+        }
+      + secret {
+          # At least one attribute in this block is (or was) sensitive,
+          # so its contents will not be displayed.
+        }
+      + secret {
+          # At least one attribute in this block is (or was) sensitive,
+          # so its contents will not be displayed.
+        }
+      + secret {
+          # At least one attribute in this block is (or was) sensitive,
+          # so its contents will not be displayed.
+        }
+      + secret {
+          # At least one attribute in this block is (or was) sensitive,
+          # so its contents will not be displayed.
+        }
+
+      + template {
+          + cooldown_period_in_seconds       = 300
+          + max_replicas                     = 2
+          + min_replicas                     = 1
+          + polling_interval_in_seconds      = 30
+          + revision_suffix                  = (known after apply)
+          + termination_grace_period_seconds = 0
+
+          + container {
+              + cpu               = 0.5
+              + ephemeral_storage = (known after apply)
+              + image             = "template2batchdevacr.azurecr.io/template2-app:dev"
+              + memory            = "1Gi"
+              + name              = "frontend-api"
+
+              + env {
+                  + name  = "APP_PORT"
+                  + value = "8080"
+                }
+              + env {
+                  + name  = "DB_HOST"
+                  + value = (known after apply)
+                }
+              + env {
+                  + name  = "DB_PORT"
+                  + value = "5432"
+                }
+              + env {
+                  + name  = "DB_SSL"
+                  + value = "true"
+                }
+              + env {
+                  + name  = "DB_SSL_REJECT_UNAUTHORIZED"
+                  + value = "false"
+                }
+              + env {
+                  + name  = "DB_NAME"
+                  + value = "template2"
+                }
+              + env {
+                  + name  = "DB_USER"
+                  + value = "pgadmint2"
+                }
+              + env {
+                  + name        = "DB_PASSWORD"
+                  + secret_name = "db-password"
+                }
+              + env {
+                  + name        = "SESSION_SECRET"
+                  + secret_name = "session-secret"
+                }
+              + env {
+                  + name        = "INTERNAL_API_TOKEN"
+                  + secret_name = "internal-api-token"
+                }
+              + env {
+                  + name        = "OPENAI_API_KEY"
+                  + secret_name = "openai-api-key"
+                }
+              + env {
+                  + name  = "OPENAI_MODEL"
+                  + value = "gpt-5.4-mini"
+                }
+              + env {
+                  + name  = "OPENAI_FILE_UPLOAD_MAX_RETRIES"
+                  + value = "3"
+                }
+              + env {
+                  + name  = "OPENAI_FILE_UPLOAD_RETRY_BASE_MS"
+                  + value = "750"
+                }
+              + env {
+                  + name  = "OPENAI_BATCH_INPUT_TOKEN_PRICE_PER_MILLION_USD"
+                  + value = "0.375"
+                }
+              + env {
+                  + name  = "OPENAI_BATCH_OUTPUT_TOKEN_PRICE_PER_MILLION_USD"
+                  + value = "2.25"
+                }
+              + env {
+                  + name  = "BENCHMARK_REPETITIONS"
+                  + value = "3"
+                }
+              + env {
+                  + name  = "BENCHMARK_JOBS_PER_RUN"
+                  + value = "20"
+                }
+              + env {
+                  + name  = "MAX_BATCH_SIZE"
+                  + value = "20"
+                }
+              + env {
+                  + name  = "MAX_WAIT_SECONDS"
+                  + value = "60"
+                }
+              + env {
+                  + name  = "PDF_RETENTION_DAYS"
+                  + value = "30"
+                }
+              + env {
+                  + name  = "MAX_UPLOAD_MB"
+                  + value = "25"
+                }
+              + env {
+                  + name  = "BLOB_PROVIDER"
+                  + value = "azure"
+                }
+              + env {
+                  + name        = "AZURE_BLOB_CONNECTION_STRING"
+                  + secret_name = "blob-connection-string"
+                }
+              + env {
+                  + name  = "AZURE_BLOB_CONTAINER"
+                  + value = "template2-documents"
+                }
+              + env {
+                  + name  = "N8N_WEBHOOK_BASE"
+                  + value = (known after apply)
+                }
+              + env {
+                  + name  = "N8N_RUN_WEBHOOK_URL"
+                  + value = (known after apply)
+                }
+              + env {
+                  + name  = "N8N_BENCHMARK_WEBHOOK_URL"
+                  + value = (known after apply)
+                }
+              + env {
+                  + name  = "N8N_REQUEST_TIMEOUT_MS"
+                  + value = "10000"
+                }
+              + env {
+                  + name  = "DEFAULT_PROFILE_ID"
+                  + value = "pdf_batch_summary"
+                }
+              + env {
+                  + name  = "ADMIN_EMAIL"
+                  + value = "admin@template2.local"
+                }
+              + env {
+                  + name        = "ADMIN_PASSWORD"
+                  + secret_name = "admin-password"
+                }
+            }
+        }
+    }
+
+  # azurerm_container_app.n8n will be created
+  + resource "azurerm_container_app" "n8n" {
+      + container_app_environment_id  = (known after apply)
+      + custom_domain_verification_id = (sensitive value)
+      + id                            = (known after apply)
+      + latest_revision_fqdn          = (known after apply)
+      + latest_revision_name          = (known after apply)
+      + location                      = (known after apply)
+      + name                          = "template2batch-dev-n8n"
+      + outbound_ip_addresses         = (known after apply)
+      + resource_group_name           = "template2batch-dev-rg"
+      + revision_mode                 = "Single"
+      + tags                          = {
+          + "environment" = "dev"
+          + "managed_by"  = "terraform"
+          + "owner"       = "subhash"
+          + "project"     = "template2batch"
+          + "workload"    = "batch-pdf-summarization"
+        }
+
+      + identity {
+          + identity_ids = (known after apply)
+          + principal_id = (known after apply)
+          + tenant_id    = (known after apply)
+          + type         = "UserAssigned"
+        }
+
+      + ingress {
+          + allow_insecure_connections = false
+          + custom_domain              = (known after apply)
+          + external_enabled           = true
+          + fqdn                       = (known after apply)
+          + target_port                = 5678
+          + transport                  = "auto"
+
+          + traffic_weight {
+              + latest_revision = true
+              + percentage      = 100
+            }
+        }
+
+      + registry {
+          + identity = (known after apply)
+          + server   = (known after apply)
+        }
+
+      + secret {
+          # At least one attribute in this block is (or was) sensitive,
+          # so its contents will not be displayed.
+        }
+      + secret {
+          # At least one attribute in this block is (or was) sensitive,
+          # so its contents will not be displayed.
+        }
+      + secret {
+          # At least one attribute in this block is (or was) sensitive,
+          # so its contents will not be displayed.
+        }
+      + secret {
+          # At least one attribute in this block is (or was) sensitive,
+          # so its contents will not be displayed.
+        }
+      + secret {
+          # At least one attribute in this block is (or was) sensitive,
+          # so its contents will not be displayed.
+        }
+
+      + template {
+          + cooldown_period_in_seconds       = 300
+          + max_replicas                     = 1
+          + min_replicas                     = 1
+          + polling_interval_in_seconds      = 30
+          + revision_suffix                  = (known after apply)
+          + termination_grace_period_seconds = 0
+
+          + container {
+              + cpu               = 0.5
+              + ephemeral_storage = (known after apply)
+              + image             = "n8nio/n8n:latest"
+              + memory            = "1Gi"
+              + name              = "n8n"
+
+              + env {
+                  + name  = "DB_TYPE"
+                  + value = "postgresdb"
+                }
+              + env {
+                  + name  = "DB_POSTGRESDB_HOST"
+                  + value = (known after apply)
+                }
+              + env {
+                  + name  = "DB_POSTGRESDB_PORT"
+                  + value = "5432"
+                }
+              + env {
+                  + name  = "DB_POSTGRESDB_SSL_ENABLED"
+                  + value = "true"
+                }
+              + env {
+                  + name  = "DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED"
+                  + value = "false"
+                }
+              + env {
+                  + name  = "DB_POSTGRESDB_DATABASE"
+                  + value = "n8ndb"
+                }
+              + env {
+                  + name  = "DB_POSTGRESDB_USER"
+                  + value = "pgadmint2"
+                }
+              + env {
+                  + name        = "DB_POSTGRESDB_PASSWORD"
+                  + secret_name = "db-password"
+                }
+              + env {
+                  + name        = "N8N_ENCRYPTION_KEY"
+                  + secret_name = "n8n-encryption-key"
+                }
+              + env {
+                  + name  = "N8N_RUNNERS_ENABLED"
+                  + value = "true"
+                }
+              + env {
+                  + name  = "N8N_RUNNERS_TASK_TIMEOUT"
+                  + value = "1200"
+                }
+              + env {
+                  + name  = "N8N_RUNNERS_MAX_OLD_SPACE_SIZE"
+                  + value = "512"
+                }
+              + env {
+                  + name  = "N8N_BLOCK_ENV_ACCESS_IN_NODE"
+                  + value = "false"
+                }
+              + env {
+                  + name  = "APP_INTERNAL_BASE_URL"
+                  + value = (known after apply)
+                }
+              + env {
+                  + name  = "OPENAI_MODEL"
+                  + value = "gpt-5.4-mini"
+                }
+              + env {
+                  + name  = "OPENAI_BATCH_COMPLETION_WINDOW"
+                  + value = "24h"
+                }
+              + env {
+                  + name  = "OPENAI_INPUT_TOKEN_PRICE_PER_MILLION_USD"
+                  + value = "0.75"
+                }
+              + env {
+                  + name  = "OPENAI_OUTPUT_TOKEN_PRICE_PER_MILLION_USD"
+                  + value = "4.5"
+                }
+              + env {
+                  + name  = "OPENAI_BATCH_INPUT_TOKEN_PRICE_PER_MILLION_USD"
+                  + value = "0.375"
+                }
+              + env {
+                  + name  = "OPENAI_BATCH_OUTPUT_TOKEN_PRICE_PER_MILLION_USD"
+                  + value = "2.25"
+                }
+              + env {
+                  + name  = "MAX_BATCH_SIZE"
+                  + value = "20"
+                }
+              + env {
+                  + name  = "MAX_WAIT_SECONDS"
+                  + value = "60"
+                }
+              + env {
+                  + name  = "BENCHMARK_REPETITIONS"
+                  + value = "3"
+                }
+              + env {
+                  + name  = "BENCHMARK_JOBS_PER_RUN"
+                  + value = "20"
+                }
+              + env {
+                  + name  = "BENCHMARK_BATCH_POLL_INTERVAL_MS"
+                  + value = "20000"
+                }
+              + env {
+                  + name  = "BENCHMARK_BATCH_MAX_WAIT_MS"
+                  + value = "7200000"
+                }
+              + env {
+                  + name  = "BATCH_POLLER_INTERVAL_MS"
+                  + value = "20000"
+                }
+              + env {
+                  + name  = "BATCH_POLLER_MAX_LOOPS"
+                  + value = "45"
+                }
+              + env {
+                  + name        = "OPENAI_API_KEY"
+                  + secret_name = "openai-api-key"
+                }
+              + env {
+                  + name  = "AZURE_OPENAI_ENDPOINT"
+                    # (1 unchanged attribute hidden)
+                }
+              + env {
+                  + name  = "AZURE_OPENAI_DEPLOYMENT"
+                    # (1 unchanged attribute hidden)
+                }
+              + env {
+                  + name  = "AZURE_OPENAI_API_VERSION"
+                  + value = "2024-10-21"
+                }
+              + env {
+                  + name        = "AZURE_OPENAI_API_KEY"
+                  + secret_name = "azure-openai-api-key"
+                }
+              + env {
+                  + name        = "INTERNAL_API_TOKEN"
+                  + secret_name = "internal-api-token"
+                }
+            }
+        }
+    }
+
+  # azurerm_container_app_environment.core will be created
+  + resource "azurerm_container_app_environment" "core" {
+      + custom_domain_verification_id    = (known after apply)
+      + default_domain                   = (known after apply)
+      + docker_bridge_cidr               = (known after apply)
+      + id                               = (known after apply)
+      + internal_load_balancer_enabled   = false
+      + location                         = "swedencentral"
+      + log_analytics_workspace_id       = (known after apply)
+      + logs_destination                 = (known after apply)
+      + mutual_tls_enabled               = false
+      + name                             = "template2batch-dev-cae"
+      + platform_reserved_cidr           = (known after apply)
+      + platform_reserved_dns_ip_address = (known after apply)
+      + public_network_access            = (known after apply)
+      + resource_group_name              = "template2batch-dev-rg"
+      + static_ip_address                = (known after apply)
+      + tags                             = {
+          + "environment" = "dev"
+          + "managed_by"  = "terraform"
+          + "owner"       = "subhash"
+          + "project"     = "template2batch"
+          + "workload"    = "batch-pdf-summarization"
+        }
+      + zone_redundancy_enabled          = false
+    }
+
+  # azurerm_container_registry.core will be created
+  + resource "azurerm_container_registry" "core" {
+      + admin_enabled                 = false
+      + admin_password                = (sensitive value)
+      + admin_username                = (known after apply)
+      + data_endpoint_host_names      = (known after apply)
+      + encryption                    = (known after apply)
+      + export_policy_enabled         = true
+      + id                            = (known after apply)
+      + location                      = "swedencentral"
+      + login_server                  = (known after apply)
+      + name                          = "template2batchdevacr"
+      + network_rule_bypass_option    = "AzureServices"
+      + network_rule_set              = (known after apply)
+      + public_network_access_enabled = true
+      + resource_group_name           = "template2batch-dev-rg"
+      + sku                           = "Basic"
+      + tags                          = {
+          + "environment" = "dev"
+          + "managed_by"  = "terraform"
+          + "owner"       = "subhash"
+          + "project"     = "template2batch"
+          + "workload"    = "batch-pdf-summarization"
+        }
+      + trust_policy_enabled          = false
+      + zone_redundancy_enabled       = false
+    }
+
+  # azurerm_key_vault.core will be created
+  + resource "azurerm_key_vault" "core" {
+      + access_policy                 = (known after apply)
+      + enable_rbac_authorization     = (known after apply)
+      + id                            = (known after apply)
+      + location                      = "swedencentral"
+      + name                          = "t2batchdevkv01"
+      + public_network_access_enabled = true
+      + purge_protection_enabled      = true
+      + rbac_authorization_enabled    = true
+      + resource_group_name           = "template2batch-dev-rg"
+      + sku_name                      = "standard"
+      + soft_delete_retention_days    = 90
+      + tags                          = {
+          + "environment" = "dev"
+          + "managed_by"  = "terraform"
+          + "owner"       = "subhash"
+          + "project"     = "template2batch"
+          + "workload"    = "batch-pdf-summarization"
+        }
+      + tenant_id                     = "90e041af-9759-4eb5-8e13-255450c4377f"
+      + vault_uri                     = (known after apply)
+
+      + contact (known after apply)
+
+      + network_acls (known after apply)
+    }
+
+  # azurerm_log_analytics_workspace.core will be created
+  + resource "azurerm_log_analytics_workspace" "core" {
+      + allow_resource_only_permissions = true
+      + daily_quota_gb                  = -1
+      + id                              = (known after apply)
+      + internet_ingestion_enabled      = true
+      + internet_query_enabled          = true
+      + local_authentication_disabled   = (known after apply)
+      + local_authentication_enabled    = true
+      + location                        = "swedencentral"
+      + name                            = "template2batch-dev-law"
+      + primary_shared_key              = (sensitive value)
+      + resource_group_name             = "template2batch-dev-rg"
+      + retention_in_days               = 30
+      + secondary_shared_key            = (sensitive value)
+      + sku                             = "PerGB2018"
+      + tags                            = {
+          + "environment" = "dev"
+          + "managed_by"  = "terraform"
+          + "owner"       = "subhash"
+          + "project"     = "template2batch"
+          + "workload"    = "batch-pdf-summarization"
+        }
+      + workspace_id                    = (known after apply)
+    }
+
+  # azurerm_postgresql_flexible_server.core will be created
+  + resource "azurerm_postgresql_flexible_server" "core" {
+      + administrator_login           = "pgadmint2"
+      + administrator_password        = (sensitive value)
+      + administrator_password_wo     = (write-only attribute)
+      + auto_grow_enabled             = false
+      + backup_retention_days         = 7
+      + fqdn                          = (known after apply)
+      + geo_redundant_backup_enabled  = false
+      + id                            = (known after apply)
+      + location                      = "swedencentral"
+      + name                          = "t2batchdevpg01"
+      + private_dns_zone_id           = (known after apply)
+      + public_network_access_enabled = true
+      + resource_group_name           = "template2batch-dev-rg"
+      + sku_name                      = "B_Standard_B1ms"
+      + storage_mb                    = 32768
+      + storage_tier                  = (known after apply)
+      + tags                          = {
+          + "environment" = "dev"
+          + "managed_by"  = "terraform"
+          + "owner"       = "subhash"
+          + "project"     = "template2batch"
+          + "workload"    = "batch-pdf-summarization"
+        }
+      + version                       = "16"
+      + zone                          = "2"
+
+      + authentication (known after apply)
+    }
+
+  # azurerm_postgresql_flexible_server_database.n8ndb will be created
+  + resource "azurerm_postgresql_flexible_server_database" "n8ndb" {
+      + charset   = "UTF8"
+      + collation = "en_US.utf8"
+      + id        = (known after apply)
+      + name      = "n8ndb"
+      + server_id = (known after apply)
+    }
+
+  # azurerm_postgresql_flexible_server_database.template2 will be created
+  + resource "azurerm_postgresql_flexible_server_database" "template2" {
+      + charset   = "UTF8"
+      + collation = "en_US.utf8"
+      + id        = (known after apply)
+      + name      = "template2"
+      + server_id = (known after apply)
+    }
+
+  # azurerm_postgresql_flexible_server_firewall_rule.allow_azure_services will be created
+  + resource "azurerm_postgresql_flexible_server_firewall_rule" "allow_azure_services" {
+      + end_ip_address   = "0.0.0.0"
+      + id               = (known after apply)
+      + name             = "allow-azure-services"
+      + server_id        = (known after apply)
+      + start_ip_address = "0.0.0.0"
+    }
+
+  # azurerm_resource_group.core will be created
+  + resource "azurerm_resource_group" "core" {
+      + id       = (known after apply)
+      + location = "swedencentral"
+      + name     = "template2batch-dev-rg"
+      + tags     = {
+          + "environment" = "dev"
+          + "managed_by"  = "terraform"
+          + "owner"       = "subhash"
+          + "project"     = "template2batch"
+          + "workload"    = "batch-pdf-summarization"
+        }
+    }
+
+  # azurerm_role_assignment.container_apps_acr_pull will be created
+  + resource "azurerm_role_assignment" "container_apps_acr_pull" {
+      + condition_version                = (known after apply)
+      + id                               = (known after apply)
+      + name                             = (known after apply)
+      + principal_id                     = (known after apply)
+      + principal_type                   = (known after apply)
+      + role_definition_id               = (known after apply)
+      + role_definition_name             = "AcrPull"
+      + scope                            = (known after apply)
+      + skip_service_principal_aad_check = true
+    }
+
+  # azurerm_role_assignment.container_apps_kv_secrets_user will be created
+  + resource "azurerm_role_assignment" "container_apps_kv_secrets_user" {
+      + condition_version                = (known after apply)
+      + id                               = (known after apply)
+      + name                             = (known after apply)
+      + principal_id                     = (known after apply)
+      + principal_type                   = (known after apply)
+      + role_definition_id               = (known after apply)
+      + role_definition_name             = "Key Vault Secrets User"
+      + scope                            = (known after apply)
+      + skip_service_principal_aad_check = true
+    }
+
+  # azurerm_role_assignment.container_apps_storage_blob_contributor will be created
+  + resource "azurerm_role_assignment" "container_apps_storage_blob_contributor" {
+      + condition_version                = (known after apply)
+      + id                               = (known after apply)
+      + name                             = (known after apply)
+      + principal_id                     = (known after apply)
+      + principal_type                   = (known after apply)
+      + role_definition_id               = (known after apply)
+      + role_definition_name             = "Storage Blob Data Contributor"
+      + scope                            = (known after apply)
+      + skip_service_principal_aad_check = true
+    }
+
+  # azurerm_storage_account.core will be created
+  + resource "azurerm_storage_account" "core" {
+      + access_tier                        = (known after apply)
+      + account_kind                       = "StorageV2"
+      + account_replication_type           = "LRS"
+      + account_tier                       = "Standard"
+      + allow_nested_items_to_be_public    = true
+      + cross_tenant_replication_enabled   = false
+      + default_to_oauth_authentication    = false
+      + dns_endpoint_type                  = "Standard"
+      + https_traffic_only_enabled         = true
+      + id                                 = (known after apply)
+      + infrastructure_encryption_enabled  = false
+      + is_hns_enabled                     = false
+      + large_file_share_enabled           = (known after apply)
+      + local_user_enabled                 = true
+      + location                           = "swedencentral"
+      + min_tls_version                    = "TLS1_2"
+      + name                               = "template2batchdevst"
+      + nfsv3_enabled                      = false
+      + primary_access_key                 = (sensitive value)
+      + primary_blob_connection_string     = (sensitive value)
+      + primary_blob_endpoint              = (known after apply)
+      + primary_blob_host                  = (known after apply)
+      + primary_blob_internet_endpoint     = (known after apply)
+      + primary_blob_internet_host         = (known after apply)
+      + primary_blob_microsoft_endpoint    = (known after apply)
+      + primary_blob_microsoft_host        = (known after apply)
+      + primary_connection_string          = (sensitive value)
+      + primary_dfs_endpoint               = (known after apply)
+      + primary_dfs_host                   = (known after apply)
+      + primary_dfs_internet_endpoint      = (known after apply)
+      + primary_dfs_internet_host          = (known after apply)
+      + primary_dfs_microsoft_endpoint     = (known after apply)
+      + primary_dfs_microsoft_host         = (known after apply)
+      + primary_file_endpoint              = (known after apply)
+      + primary_file_host                  = (known after apply)
+      + primary_file_internet_endpoint     = (known after apply)
+      + primary_file_internet_host         = (known after apply)
+      + primary_file_microsoft_endpoint    = (known after apply)
+      + primary_file_microsoft_host        = (known after apply)
+      + primary_location                   = (known after apply)
+      + primary_queue_endpoint             = (known after apply)
+      + primary_queue_host                 = (known after apply)
+      + primary_queue_microsoft_endpoint   = (known after apply)
+      + primary_queue_microsoft_host       = (known after apply)
+      + primary_table_endpoint             = (known after apply)
+      + primary_table_host                 = (known after apply)
+      + primary_table_microsoft_endpoint   = (known after apply)
+      + primary_table_microsoft_host       = (known after apply)
+      + primary_web_endpoint               = (known after apply)
+      + primary_web_host                   = (known after apply)
+      + primary_web_internet_endpoint      = (known after apply)
+      + primary_web_internet_host          = (known after apply)
+      + primary_web_microsoft_endpoint     = (known after apply)
+      + primary_web_microsoft_host         = (known after apply)
+      + public_network_access_enabled      = true
+      + queue_encryption_key_type          = "Service"
+      + resource_group_name                = "template2batch-dev-rg"
+      + secondary_access_key               = (sensitive value)
+      + secondary_blob_connection_string   = (sensitive value)
+      + secondary_blob_endpoint            = (known after apply)
+      + secondary_blob_host                = (known after apply)
+      + secondary_blob_internet_endpoint   = (known after apply)
+      + secondary_blob_internet_host       = (known after apply)
+      + secondary_blob_microsoft_endpoint  = (known after apply)
+      + secondary_blob_microsoft_host      = (known after apply)
+      + secondary_connection_string        = (sensitive value)
+      + secondary_dfs_endpoint             = (known after apply)
+      + secondary_dfs_host                 = (known after apply)
+      + secondary_dfs_internet_endpoint    = (known after apply)
+      + secondary_dfs_internet_host        = (known after apply)
+      + secondary_dfs_microsoft_endpoint   = (known after apply)
+      + secondary_dfs_microsoft_host       = (known after apply)
+      + secondary_file_endpoint            = (known after apply)
+      + secondary_file_host                = (known after apply)
+      + secondary_file_internet_endpoint   = (known after apply)
+      + secondary_file_internet_host       = (known after apply)
+      + secondary_file_microsoft_endpoint  = (known after apply)
+      + secondary_file_microsoft_host      = (known after apply)
+      + secondary_location                 = (known after apply)
+      + secondary_queue_endpoint           = (known after apply)
+      + secondary_queue_host               = (known after apply)
+      + secondary_queue_microsoft_endpoint = (known after apply)
+      + secondary_queue_microsoft_host     = (known after apply)
+      + secondary_table_endpoint           = (known after apply)
+      + secondary_table_host               = (known after apply)
+      + secondary_table_microsoft_endpoint = (known after apply)
+      + secondary_table_microsoft_host     = (known after apply)
+      + secondary_web_endpoint             = (known after apply)
+      + secondary_web_host                 = (known after apply)
+      + secondary_web_internet_endpoint    = (known after apply)
+      + secondary_web_internet_host        = (known after apply)
+      + secondary_web_microsoft_endpoint   = (known after apply)
+      + secondary_web_microsoft_host       = (known after apply)
+      + sftp_enabled                       = false
+      + shared_access_key_enabled          = true
+      + table_encryption_key_type          = "Service"
+      + tags                               = {
+          + "environment" = "dev"
+          + "managed_by"  = "terraform"
+          + "owner"       = "subhash"
+          + "project"     = "template2batch"
+          + "workload"    = "batch-pdf-summarization"
+        }
+
+      + blob_properties (known after apply)
+
+      + network_rules (known after apply)
+
+      + queue_properties (known after apply)
+
+      + routing (known after apply)
+
+      + share_properties (known after apply)
+
+      + static_website (known after apply)
+    }
+
+  # azurerm_storage_container.documents will be created
+  + resource "azurerm_storage_container" "documents" {
+      + container_access_type             = "private"
+      + default_encryption_scope          = (known after apply)
+      + encryption_scope_override_enabled = true
+      + has_immutability_policy           = (known after apply)
+      + has_legal_hold                    = (known after apply)
+      + id                                = (known after apply)
+      + metadata                          = (known after apply)
+      + name                              = "template2-documents"
+      + resource_manager_id               = (known after apply)
+      + storage_account_id                = (known after apply)
+    }
+
+  # azurerm_user_assigned_identity.container_apps will be created
+  + resource "azurerm_user_assigned_identity" "container_apps" {
+      + client_id           = (known after apply)
+      + id                  = (known after apply)
+      + location            = "swedencentral"
+      + name                = "template2batch-dev-ca-uai"
+      + principal_id        = (known after apply)
+      + resource_group_name = "template2batch-dev-rg"
+      + tags                = {
+          + "environment" = "dev"
+          + "managed_by"  = "terraform"
+          + "owner"       = "subhash"
+          + "project"     = "template2batch"
+          + "workload"    = "batch-pdf-summarization"
+        }
+      + tenant_id           = (known after apply)
+    }
+
+Plan: 17 to add, 0 to change, 0 to destroy.
+
+Changes to Outputs:
+  + acr_login_server               = (known after apply)
+  + acr_name                       = "template2batchdevacr"
+  + container_app_environment_id   = (known after apply)
+  + container_app_environment_name = "template2batch-dev-cae"
+  + frontend_api_fqdn              = (known after apply)
+  + frontend_api_name              = "template2batch-dev-fa"
+  + frontend_api_principal_id      = (known after apply)
+  + key_vault_name                 = "t2batchdevkv01"
+  + key_vault_uri                  = (known after apply)
+  + log_analytics_workspace_name   = "template2batch-dev-law"
+  + n8n_fqdn                       = (known after apply)
+  + n8n_name                       = "template2batch-dev-n8n"
+  + n8n_principal_id               = (known after apply)
+  + postgres_fqdn                  = (known after apply)
+  + postgres_n8ndb_name            = "n8ndb"
+  + postgres_server_name           = "t2batchdevpg01"
+  + postgres_template2_db_name     = "template2"
+  + resource_group_id              = (known after apply)
+  + resource_group_name            = "template2batch-dev-rg"
+  + storage_account_name           = "template2batchdevst"
+  + storage_blob_container_name    = "template2-documents"

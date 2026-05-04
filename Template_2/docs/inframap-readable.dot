@@ -1,0 +1,81 @@
+digraph TerraformAzureReadable {
+  rankdir=LR;
+  graph [fontname="Helvetica", bgcolor="white", pad="0.2", nodesep="0.5", ranksep="0.8", splines=true];
+  node [shape=box, style="rounded,filled", color="#3b82f6", fillcolor="#eff6ff", fontname="Helvetica", fontsize=11];
+  edge [color="#475569", arrowsize=0.7, penwidth=1.0, fontname="Helvetica", fontsize=10];
+
+  subgraph cluster_platform {
+    label="Platform";
+    color="#94a3b8";
+    style="rounded,dashed";
+
+    rg [label="Resource Group\ntemplate2batch-dev-rg", fillcolor="#f8fafc", color="#64748b"];
+    law [label="Log Analytics\nworkspace", fillcolor="#f0f9ff"];
+    cae [label="Container Apps\nEnvironment", fillcolor="#f0f9ff"];
+    acr [label="Azure Container\nRegistry", fillcolor="#fefce8", color="#ca8a04"];
+    kv [label="Key Vault", fillcolor="#fff7ed", color="#c2410c"];
+    pg [label="PostgreSQL\nFlexible Server", fillcolor="#ecfeff", color="#0e7490"];
+    st [label="Storage Account\ntemplate2batchdevst", fillcolor="#f0fdf4", color="#15803d"];
+  }
+
+  subgraph cluster_runtime {
+    label="Runtime";
+    color="#94a3b8";
+    style="rounded,dashed";
+
+    fa [label="Container App\nfrontend-api", fillcolor="#dcfce7", color="#15803d"];
+    n8n [label="Container App\nn8n", fillcolor="#dcfce7", color="#15803d"];
+    uai [label="User Assigned\nManaged Identity", fillcolor="#f5f3ff", color="#7c3aed"];
+    ra_acr [label="Role Assignment\nAcrPull", fillcolor="#f5f3ff", color="#7c3aed"];
+    ra_kv [label="Role Assignment\nKV Secrets User", fillcolor="#f5f3ff", color="#7c3aed"];
+    ra_blob [label="Role Assignment\nBlob Data Contributor", fillcolor="#f5f3ff", color="#7c3aed"];
+  }
+
+  subgraph cluster_data {
+    label="Data Layer";
+    color="#94a3b8";
+    style="rounded,dashed";
+
+    db_template2 [label="DB: template2", fillcolor="#cffafe", color="#0e7490"];
+    db_n8n [label="DB: n8ndb", fillcolor="#cffafe", color="#0e7490"];
+    pg_fw_az [label="Firewall Rule\nallow-azure-services", fillcolor="#cffafe", color="#0e7490"];
+    pg_fw_dev [label="Firewall Rule\nallow-developer-ip", fillcolor="#cffafe", color="#0e7490"];
+    blob_docs [label="Blob Container\ntemplate2-documents", fillcolor="#dcfce7", color="#15803d"];
+  }
+
+  # Runtime dependencies
+  fa -> n8n [label="calls webhooks"];
+  fa -> pg [label="app DB access"];
+  fa -> st [label="PDF blob storage"];
+  fa -> cae [label="hosted on"];
+  n8n -> pg [label="n8n DB access"];
+  n8n -> fa [label="internal callbacks"];
+  n8n -> cae [label="hosted on"];
+
+  # Identity and permissions
+  fa -> uai [label="uses identity"];
+  n8n -> uai [label="uses identity"];
+  uai -> ra_acr;
+  uai -> ra_kv;
+  uai -> ra_blob;
+  ra_acr -> acr;
+  ra_kv -> kv;
+  ra_blob -> st;
+
+  # Platform wiring
+  cae -> law [label="logs"];
+  db_template2 -> pg;
+  db_n8n -> pg;
+  pg_fw_az -> pg;
+  pg_fw_dev -> pg;
+  blob_docs -> st;
+
+  # Scope under RG
+  acr -> rg;
+  law -> rg;
+  cae -> rg;
+  kv -> rg;
+  pg -> rg;
+  st -> rg;
+  uai -> rg;
+}

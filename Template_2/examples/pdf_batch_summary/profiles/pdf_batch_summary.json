@@ -1,0 +1,43 @@
+{
+  "id": "pdf_batch_summary",
+  "name": "PDF Batch Summarization",
+  "description": "Multi-user PDF summarization profile with sync and async batch execution modes.",
+  "status": "active",
+  "isExample": true,
+  "fields": [
+    {
+      "key": "executionMode",
+      "label": "Execution Mode",
+      "type": "select",
+      "required": true,
+      "default": "sync",
+      "options": [
+        { "label": "Sync", "value": "sync" },
+        { "label": "Batch", "value": "batch" }
+      ],
+      "helpText": "Use sync for immediate results and batch for cost-efficient async runs."
+    },
+    {
+      "key": "batchStrategy",
+      "label": "Batch Strategy",
+      "type": "select",
+      "required": true,
+      "default": "count_only",
+      "options": [
+        { "label": "Count Only", "value": "count_only" }
+      ],
+      "helpText": "Default strategy is count_only (no auto-scheduler)."
+    }
+  ],
+  "execution": {
+    "webhookPath": "summaries/run",
+    "payloadMap": {
+      "profileId": "profileId",
+      "jobId": "jobId",
+      "userId": "userId",
+      "documentId": "documentId",
+      "executionMode": "executionMode",
+      "batchStrategy": "batchStrategy"
+    }
+  }
+}

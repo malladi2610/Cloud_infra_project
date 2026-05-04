@@ -1,6 +1,10 @@
 extras/
 Template_1/checkpoint_progress.md
+Template_2/checkpoint_progress.md
 Template_1/.env
+Template_2/storage
+Template_2/.env
+**/node_modules/
 
 # Terraform generated files
 **/.terraform/*
