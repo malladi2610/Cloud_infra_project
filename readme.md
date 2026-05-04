@@ -11,9 +11,9 @@ The templates share a common cloud architecture:
 - Azure Key Vault and Container App secrets for runtime secret handling
 - Log Analytics for runtime observability
 - Terraform for repeatable infrastructure provisioning
-- Checkpoint-driven guides and traceback logs for deployment troubleshooting
+<!-- - Checkpoint-driven guides and traceback logs for deployment troubleshooting -->
 
-Each template includes application code, profile/workflow examples, database migrations, Terraform infrastructure, and documentation for local and cloud operation.
+Each template includes application code, profile/workflow examples, database migrations and Terraform infrastructure.
 
 ## 2. Templates
 
@@ -46,7 +46,7 @@ It provides:
 Template documentation:
 - [Template 2 README](./Template_2/readme.md)
 
-## 3. Repository Structure
+<!-- ## 3. Repository Structure
 ```text
 .
   Template_1/
@@ -70,9 +70,9 @@ Template documentation:
     docs/
       template_1/
       template_2/
-```
+``` -->
 
-## 4. Operating Model
+<!-- ## 4. Operating Model
 The repository uses a checkpoint-based workflow for cloud deployment:
 
 1. Build and verify the local application behavior.
@@ -86,4 +86,4 @@ The repository uses a checkpoint-based workflow for cloud deployment:
 9. Run cloud smoke tests.
 10. Record errors and fixes in the template traceback document.
 
-For detailed commands, use each template README and the guides under `extras/docs`.
+For detailed commands, use each template README and the guides under `extras/docs`. -->
